@@ -1,0 +1,12 @@
+${PODS_ROOT}/Target Support Files/Pods-ios/Pods-ios-frameworks.sh
+${BUILT_PRODUCTS_DIR}/KMMViewModelCore/KMMViewModelCore.framework
+${BUILT_PRODUCTS_DIR}/KMMViewModelCoreObjC/KMMViewModelCoreObjC.framework
+${BUILT_PRODUCTS_DIR}/KMMViewModelSwiftUI/KMMViewModelSwiftUI.framework
+${BUILT_PRODUCTS_DIR}/KMPNativeCoroutinesAsync/KMPNativeCoroutinesAsync.framework
+${BUILT_PRODUCTS_DIR}/KMPNativeCoroutinesCombine/KMPNativeCoroutinesCombine.framework
+${BUILT_PRODUCTS_DIR}/KMPNativeCoroutinesCore/KMPNativeCoroutinesCore.framework
+${BUILT_PRODUCTS_DIR}/KMPNativeCoroutinesRxSwift/KMPNativeCoroutinesRxSwift.framework
+${BUILT_PRODUCTS_DIR}/RxSwift/RxSwift.framework
+${BUILT_PRODUCTS_DIR}/SwiftCoroutine/SwiftCoroutine.framework
+${PODS_ROOT}/../../k2k/build/cocoapods/framework/k2k.framework
+${PODS_ROOT}/../../presenter/build/cocoapods/framework/presenter.framework

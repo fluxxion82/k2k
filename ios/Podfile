@@ -1,0 +1,18 @@
+platform :ios, '13.5'
+
+project 'ios.xcodeproj'
+
+target 'ios' do
+    use_frameworks!
+    
+    pod 'k2k', :path => '../k2k'
+    pod 'presenter', :path => '../presenter'
+    pod 'SwiftCoroutine', '~> 2.1'
+    
+    pod 'KMPNativeCoroutinesAsync', '1.0.0-ALPHA-7'    # Swift Concurrency implementation
+    pod 'KMPNativeCoroutinesCombine', '1.0.0-ALPHA-7'  # Combine implementation
+    pod 'KMPNativeCoroutinesRxSwift', '1.0.0-ALPHA-7'  # RxSwift implementation
+    pod 'KMMViewModelSwiftUI', '1.0.0-ALPHA-6'
+
+end
+
