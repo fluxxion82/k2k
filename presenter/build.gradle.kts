@@ -1,8 +1,8 @@
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
-    id("com.google.devtools.ksp") version "1.8.20-1.0.11"
-    id("com.rickclephas.kmp.nativecoroutines") version "1.0.0-ALPHA-7"
+    id("com.google.devtools.ksp") version "2.0.0-Beta1-1.0.15"
+    id("com.rickclephas.kmp.nativecoroutines") version "1.0.0-ALPHA-22-kotlin-2.0.0-Beta1"
 }
 
 group = "com.k2k.presenter"
@@ -33,13 +33,13 @@ kotlin {
         languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
     }
 
-    val ktorVersion = "2.2.4"
+    val ktorVersion = "3.0.0-beta-1"
     sourceSets {
         val commonMain by getting {
             dependencies {
                 implementation(project(":k2k"))
                 implementation("io.ktor:ktor-client-core:$ktorVersion")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-RC")
             }
         }
         val commonTest by getting {

@@ -26,13 +26,12 @@ object ConnectionServer {
         receiveJob = scope.launch(Dispatchers.Default) {
             while (true) {
                 val socketAddress = InetSocketAddress(NetInterface.getLocalAddress(), port)
-                socket.bind(socketAddress) {
-                    reuseAddress = true
-                    // reusePort = true
-                }
+                socket
+                    .bind(socketAddress) {
+                        reuseAddress = true
+                        // reusePort = true
+                    }
                     .accept()
-                    //.tls(coroutineContext = coroutineContext, NetInterface.getTlsConfig())
-
                     .use { boundSocket ->
                         runCatching {
                             println("bound socket")

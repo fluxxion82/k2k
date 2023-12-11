@@ -1,7 +1,7 @@
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
-    id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.0-Beta1"
 }
 
 group = "com.k2k"
@@ -17,7 +17,6 @@ repositories {
 kotlin {
     targets {
         jvm {
-            jvmToolchain(8)
             withJava()
             testRuns["test"].executionTask.configure {
                 useJUnitPlatform()
@@ -35,16 +34,16 @@ kotlin {
     }
 
 
-    val ktorVersion = "2.2.4"
+    val ktorVersion = "3.0.0-beta-1"
     sourceSets {
         val commonMain by getting {
             dependencies {
                 implementation("io.ktor:ktor-client-core:$ktorVersion")
                 implementation("io.ktor:ktor-network:$ktorVersion")
                 implementation("io.ktor:ktor-network-tls:$ktorVersion")
-                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.1")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-RC")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
             }
         }
         val commonTest by getting {

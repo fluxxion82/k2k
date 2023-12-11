@@ -2,9 +2,8 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.8.20"
-    kotlin("kapt") version "1.8.20"
-    id("org.jetbrains.compose") version "1.4.0"
+    kotlin("jvm") version "2.0.0-Beta1"
+    id("org.jetbrains.compose") version "1.5.11"
 }
 
 group = "com.k2k.desk"
@@ -44,5 +43,5 @@ tasks.test {
 }
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "11"
+    kotlinOptions.jvmTarget = "17"
 }

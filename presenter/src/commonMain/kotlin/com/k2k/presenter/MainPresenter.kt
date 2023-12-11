@@ -44,7 +44,7 @@ open class MainPresenter(val name: String, val receiving: Boolean): CoroutineSco
         discover.makeDiscoverable(Host(name))
         discover.startDiscovery()
         discoveryJob = launch {
-            discover.peersFlow.distinctUntilChanged().collect {peers ->
+            discover.peersFlow.distinctUntilChanged().collect { peers ->
                 println("discovered peer")
                 val hosts = peers.filter { it.name != name }
 

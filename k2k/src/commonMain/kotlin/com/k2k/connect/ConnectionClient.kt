@@ -5,7 +5,6 @@ import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.InetSocketAddress
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openWriteChannel
-import io.ktor.utils.io.printStack
 import kotlinx.coroutines.Dispatchers
 
 object ConnectionClient {
@@ -24,14 +23,12 @@ object ConnectionClient {
                     reuseAddress = true
                 }
 
-            //.tls(coroutineContext = coroutineContext, NetInterface.getTlsConfig())
-
             println("client sent: $socket, ${bytes.size}")
             val writeChannel = socket.openWriteChannel(autoFlush = true)
             writeChannel.writeFully(bytes, 0, bytes.size)
             println("client written")
         }.onFailure {
-            it.cause?.printStack()
+            it.cause?.printStackTrace()
             println("exception sending: ${it.message}")
         }
     }

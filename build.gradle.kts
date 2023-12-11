@@ -6,15 +6,13 @@ buildscript {
         gradlePluginPortal()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:7.4.2")
+        classpath("com.android.tools.build:gradle:8.1.0")
     }
 }
 
 plugins {
-    kotlin("jvm") version "1.8.20"
-    kotlin("kapt") version "1.8.20"
-    id("org.jetbrains.compose") version "1.4.0"
-    kotlin("plugin.serialization") version "1.8.10"
+    kotlin("jvm") version "2.0.0-Beta1"
+    id("org.jetbrains.compose") version "1.5.11"
 }
 
 group = "k2k"
@@ -33,7 +31,5 @@ allprojects {
         mavenCentral()
         google()
         gradlePluginPortal()
-        mavenCentral()
-        maven { setUrl("https://repo.repsy.io/mvn/chrynan/public") }
     }
 }
