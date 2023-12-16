@@ -29,7 +29,7 @@ object ConnectionServer {
                 socket
                     .bind(socketAddress) {
                         reuseAddress = true
-                        // reusePort = true
+                        reusePort = true
                     }
                     .accept()
                     .use { boundSocket ->
