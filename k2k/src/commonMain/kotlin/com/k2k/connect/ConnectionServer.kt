@@ -1,10 +1,9 @@
 package com.k2k.connect
 
 import com.k2k.NetInterface
+import com.k2k.connect.connection
 import io.ktor.network.selector.SelectorManager
-import io.ktor.network.sockets.InetSocketAddress
-import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openReadChannel
+import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.use
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +36,10 @@ object ConnectionServer {
                             println("bound socket")
 
                             val readChannel = boundSocket.openReadChannel()
-                            val buffer = ByteArray(readChannel.availableForRead)
+                            val output = boundSocket.openWriteChannel(autoFlush = true)
+                            val toRead = readChannel.availableForRead
+                            val buffer = ByteArray(toRead)
+                            println("available to read: $toRead")
                             while (true) {
                                 val bytesRead = readChannel.readAvailable(buffer)
                                 if (bytesRead <= 0) {

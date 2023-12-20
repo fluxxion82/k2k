@@ -62,7 +62,7 @@ open class MainPresenter(val name: String, val receiving: Boolean): CoroutineSco
             discover.stopDiscovery()
             connect = Connection.Builder(this)
                 .forPeers(setOf(host))
-                .setPort(7331)
+                .setPort(2323)
                 .build()
 
             if (receiving) {
