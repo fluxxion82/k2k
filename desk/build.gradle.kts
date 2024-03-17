@@ -2,8 +2,8 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "2.0.0-Beta1"
-    id("org.jetbrains.compose") version "1.5.11"
+    kotlin("jvm") version libs.versions.kotlin
+    alias(libs.plugins.jetbrains.compose) version libs.versions.jetpack.compose
 }
 
 group = "com.k2k.desk"

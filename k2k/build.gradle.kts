@@ -1,7 +1,7 @@
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.0-Beta1"
+    alias(libs.plugins.kotlin.serialization) version libs.versions.kotlin
 }
 
 group = "com.k2k"
@@ -38,12 +38,12 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("io.ktor:ktor-client-core:$ktorVersion")
-                implementation("io.ktor:ktor-network:$ktorVersion")
-                implementation("io.ktor:ktor-network-tls:$ktorVersion")
-                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-RC")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+                implementation(libs.ktor.client.core)
+                implementation(libs.ktor.network)
+                implementation(libs.ktor.network.tls)
+                implementation(libs.kotlinx.datetime)
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization.json)
             }
         }
         val commonTest by getting {

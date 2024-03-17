@@ -1,8 +1,8 @@
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
-    id("com.google.devtools.ksp") version "2.0.0-Beta1-1.0.15"
-    id("com.rickclephas.kmp.nativecoroutines") version "1.0.0-ALPHA-22-kotlin-2.0.0-Beta1"
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.native.coroutines)
 }
 
 group = "com.k2k.presenter"
@@ -16,30 +16,28 @@ repositories {
 }
 
 kotlin {
-    targets {
-        jvm()
+    applyDefaultHierarchyTemplate()
+    jvm()
 
-        val iosTarget: (String, org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.() -> Unit) -> org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget = when {
-            System.getenv("SDK_NAME")?.startsWith("iphoneos") == true -> ::iosArm64
-            System.getenv("NATIVE_ARCH")?.startsWith("arm") == true -> ::iosSimulatorArm64
-            else -> ::iosX64
-        }
-        iosTarget("ios") {
-            binaries.framework("CueDomain")
-        }
+    val iosTarget: (String, org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.() -> Unit) -> org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget = when {
+        System.getenv("SDK_NAME")?.startsWith("iphoneos") == true -> ::iosArm64
+        System.getenv("NATIVE_ARCH")?.startsWith("arm") == true -> ::iosSimulatorArm64
+        else -> ::iosX64
+    }
+    iosTarget("ios") {
+        binaries.framework("CueDomain")
     }
 
     sourceSets.all {
         languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
     }
 
-    val ktorVersion = "3.0.0-beta-1"
     sourceSets {
         val commonMain by getting {
             dependencies {
                 implementation(project(":k2k"))
-                implementation("io.ktor:ktor-client-core:$ktorVersion")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-RC")
+                implementation(libs.ktor.client.core)
+                implementation(libs.kotlinx.coroutines.core)
             }
         }
         val commonTest by getting {

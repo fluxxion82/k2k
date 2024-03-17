@@ -6,13 +6,13 @@ buildscript {
         gradlePluginPortal()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:8.1.0")
+        classpath(libs.android.tools.gradle)
     }
 }
 
 plugins {
-    kotlin("jvm") version "2.0.0-Beta1"
-    id("org.jetbrains.compose") version "1.5.11"
+    kotlin("jvm") version libs.versions.kotlin
+    id("org.jetbrains.compose") version libs.versions.jetpack.compose
 }
 
 group = "k2k"
