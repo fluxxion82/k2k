@@ -18,6 +18,7 @@
 bin/
 gen/
 obj/
+ios/Pods/
 
 .attach_pid*
 

@@ -16,12 +16,7 @@ repositories {
 
 kotlin {
     targets {
-        jvm {
-            withJava()
-            testRuns["test"].executionTask.configure {
-                useJUnitPlatform()
-            }
-        }
+        jvm()
 
         val iosTarget: (String, org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.() -> Unit) -> org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget = when {
             System.getenv("SDK_NAME")?.startsWith("iphoneos") == true -> ::iosArm64
@@ -33,8 +28,6 @@ kotlin {
         }
     }
 
-
-    val ktorVersion = "3.0.0-beta-1"
     sourceSets {
         val commonMain by getting {
             dependencies {
@@ -43,7 +36,11 @@ kotlin {
                 implementation(libs.ktor.network.tls)
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.serialization.json)
+                implementation(libs.kotlinx.serialization)
+
+                implementation("io.ktor:ktor-client-cio:3.0.0-beta-1")
+                implementation("io.ktor:ktor-client-content-negotiation:3.0.0-beta-1")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.0-beta-1")
             }
         }
         val commonTest by getting {
@@ -51,7 +48,13 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
-        val jvmMain by getting
+        val jvmMain by getting {
+            dependencies {
+                implementation("io.ktor:ktor-server-content-negotiation:3.0.0-beta-1")
+                implementation("io.ktor:ktor-server-core:3.0.0-beta-1")
+                api("io.ktor:ktor-server-netty:3.0.0-beta-1")
+            }
+        }
         val jvmTest by getting
         val iosMain by getting
         val iosTest by getting

@@ -12,7 +12,6 @@ repositories {
     mavenCentral()
     google()
     gradlePluginPortal()
-    mavenCentral()
 }
 
 kotlin {
