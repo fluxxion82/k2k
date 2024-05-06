@@ -14,7 +14,7 @@ import java.io.File
 fun startServer(
     port: Int,
     getFileFromName: (String) -> ByteArray,
-    onFileUploaded: (ByteArray) -> Unit,
+    onFileUploaded: (ByteArray, String) -> Unit,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     return embeddedServer(Netty, port = port) {
         install(ContentNegotiation)
@@ -37,7 +37,7 @@ fun startServer(
                 println("upload complete")
                 call.respondText("200")
 
-                tempFile?.let { onFileUploaded(it.readBytes()) }
+                tempFile?.let { onFileUploaded(it.readBytes(), it.name) }
             }
 
             get("/download/{fileName}") {
