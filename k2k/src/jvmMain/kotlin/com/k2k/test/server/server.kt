@@ -13,6 +13,7 @@ import java.io.File
 
 fun startServer(
     port: Int,
+    tempFilePath: String,
     getFileFromName: (String) -> ByteArray,
     onFileUploaded: (ByteArray, String) -> Unit,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
@@ -26,7 +27,8 @@ fun startServer(
                 multipart.forEachPart { part ->
                     if (part is PartData.FileItem) {
                         if (tempFile == null) {
-                            tempFile = File("/home/fluxxion/passman/${part.originalFileName}")
+                            tempFile = File("$tempFilePath/${part.originalFileName}")
+                            tempFile?.createNewFile()
                         }
 
                         val fileBytes = part.streamProvider().readBytes()
@@ -45,7 +47,6 @@ fun startServer(
                 val fileName = call.parameters["fileName"]!!
 
                 val fileBytes = getFileFromName(fileName)
-                println("file bytes maybe returned")
                 if (fileBytes.isNotEmpty()) {
                     println("file bytes exist")
                     call.respondBytes(fileBytes)
