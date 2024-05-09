@@ -10,12 +10,13 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import java.io.File
+import kotlin.reflect.KSuspendFunction1
 
 fun startServer(
     port: Int,
     tempFilePath: String,
-    getFileFromName: (String) -> ByteArray,
-    onFileUploaded: (ByteArray, String) -> Unit,
+    getFileFromName: suspend (String) -> ByteArray,
+    onFileUploaded: suspend (ByteArray, String) -> Unit,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     return embeddedServer(Netty, port = port) {
         install(ContentNegotiation)
@@ -55,5 +56,5 @@ fun startServer(
                 }
             }
         }
-    }.start(wait = true)
+    }
 }
