@@ -1,13 +1,13 @@
 [versions]
 agp = "8.2.0"
-kotlin = "2.0.0-RC1"
+kotlin = "2.0.0-RC3"
 kotlinx-datetime = "0.6.0-RC.2"
 kotlinx-coroutines = "1.8.0"
 kotlinx-serialization = "1.6.3"
 
 ktor = "3.0.0-beta-1"
 
-jetpack-compose = "1.6.2"
+jetpack-compose = "1.6.10-rc01"
 androidxComposeMaterial3 = "1.1.0-rc01"
 
 [libraries]
@@ -22,7 +22,7 @@ ktor-network-tls = { module = "io.ktor:ktor-network-tls", version.ref = "ktor" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.0" }
 androidx-core-kts = { module = "androidx.core:core-ktx", version = "1.13.1" }
-androidx-lifecycle-runtime-kts = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.7.0" }
+androidx-lifecycle-runtime-kts = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.8.0" }
 
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version = "2024.05.00" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
@@ -32,6 +32,9 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 
 
 [plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
@@ -39,5 +42,5 @@ kotlin-android-gradlePlugin = { id = "org.jetbrains.kotlin.android", version.ref
 
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref ="jetpack-compose" }
 jetbrains-kotlin-cocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
-ksp = { id = "com.google.devtools.ksp", version = "2.0.0-Beta4-1.0.19" }
+ksp = { id = "com.google.devtools.ksp", version = "2.0.0-RC3-1.0.20" }
 native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.0-ALPHA-28-kotlin-2.0.0-RC1" }

@@ -12,7 +12,8 @@ buildscript {
 
 plugins {
     kotlin("jvm") version libs.versions.kotlin
-    id("org.jetbrains.compose") version libs.versions.jetpack.compose
+    alias(libs.plugins.jetbrains.compose)
+    alias(libs.plugins.compose.compiler)
 }
 
 group = "k2k"

@@ -3,7 +3,9 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version libs.versions.kotlin
-    alias(libs.plugins.jetbrains.compose) version libs.versions.jetpack.compose
+    // alias(libs.plugins.jetbrains.compose) version libs.versions.jetpack.compose
+    alias(libs.plugins.jetbrains.compose)
+    alias(libs.plugins.compose.compiler)
 }
 
 group = "com.k2k.desk"
