@@ -1,7 +1,8 @@
-package com.example.k2k
+package com.k2k
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.allocPointerTo
 import kotlinx.cinterop.memScoped
@@ -23,6 +24,7 @@ import platform.posix.sockaddr
 import platform.posix.socklen_t
 
 actual object NetInterface {
+    @OptIn(ExperimentalForeignApi::class)
     actual fun getAddresses(): Set<String> {
         val addresses = mutableSetOf<String>()
         memScoped {
@@ -37,7 +39,7 @@ actual object NetInterface {
                         val res = getnameinfo(
                             ifaPtr.pointed.ifa_addr?.reinterpret(),
                             (ifaPtr.pointed.ifa_addr?.pointed?.sa_len ?: 0) as socklen_t, host,
-                            NI_MAXHOST, null, 0, NI_NUMERICHOST
+                            NI_MAXHOST.toUInt(), null, 0u, NI_NUMERICHOST
                         )
                         if (res == 0) {
                             addresses.add(host.toKString())
@@ -51,6 +53,7 @@ actual object NetInterface {
         return addresses
     }
 
+    @OptIn(ExperimentalForeignApi::class)
     actual fun getLocalAddress(): String  {
         val ifa: ifaddrs = memScoped {
             val ifap = allocPointerTo<ifaddrs>()
@@ -67,7 +70,7 @@ actual object NetInterface {
                 getnameinfo(
                     sa.ptr.reinterpret(), sa.sa_len.toUInt(),
                     hostBuffer.refTo(0), hostBuffer.size.toUInt(),
-                    null, 0, NI_NUMERICHOST
+                    null, 0u, NI_NUMERICHOST
                 )
                 address = hostBuffer.toKString()
                 break

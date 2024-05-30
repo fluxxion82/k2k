@@ -1,7 +1,6 @@
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
-    alias(libs.plugins.ksp)
     alias(libs.plugins.native.coroutines)
 }
 
@@ -26,7 +25,7 @@ kotlin {
         else -> ::iosX64
     }
     iosTarget("ios") {
-        binaries.framework("CueDomain")
+        binaries.framework("presenter")
     }
 
     sourceSets.all {
