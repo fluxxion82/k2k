@@ -1,7 +1,6 @@
 package com.k2k.connect
 
 import com.k2k.NetInterface
-import com.k2k.connect.connection
 import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.use

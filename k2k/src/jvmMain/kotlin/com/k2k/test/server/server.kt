@@ -10,7 +10,6 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import java.io.File
-import kotlin.reflect.KSuspendFunction1
 
 fun startServer(
     port: Int,
