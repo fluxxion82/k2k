@@ -41,6 +41,19 @@ actual object NetInterface {
     }
 
     actual fun getLocalAddress(): String {
+        val interfaces = NetworkInterface.getNetworkInterfaces()
+        for (networkInterface in interfaces) {
+            val addresses = networkInterface.inetAddresses
+            for (address in addresses) {
+                if (!address.isLoopbackAddress && address is InetAddress && !address.isLinkLocalAddress) {
+                    if (address.hostAddress.contains(":")) {
+                        // This is an IPv6 address, skip it if you prefer IPv4
+                        continue
+                    }
+                    return address.hostAddress
+                }
+            }
+        }
         return InetAddress.getLocalHost().hostAddress
     }
 }
