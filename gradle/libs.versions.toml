@@ -1,13 +1,13 @@
 [versions]
-agp = "8.2.0"
-kotlin = "2.0.0"
-kotlinx-datetime = "0.6.0"
-kotlinx-coroutines = "1.8.1"
-kotlinx-serialization = "1.6.3"
+agp = "8.2.1"
+kotlin = "2.1.0-Beta2"
+kotlinx-datetime = "0.6.1"
+kotlinx-coroutines = "1.9.0"
+kotlinx-serialization = "1.7.3"
 
 ktor = "3.0.0-beta-1"
 
-jetpack-compose = "1.6.10"
+jetpack-compose = "1.7.0"
 androidxComposeMaterial3 = "1.1.0-rc01"
 
 [libraries]
@@ -20,11 +20,11 @@ ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-network = { module = "io.ktor:ktor-network", version.ref = "ktor" }
 ktor-network-tls = { module = "io.ktor:ktor-network-tls", version.ref = "ktor" }
 
-androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.0" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.3" }
 androidx-core-kts = { module = "androidx.core:core-ktx", version = "1.13.1" }
-androidx-lifecycle-runtime-kts = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.8.0" }
+androidx-lifecycle-runtime-kts = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.8.6" }
 
-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version = "2024.05.00" }
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version = "2024.10.00" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics"}
