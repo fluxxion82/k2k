@@ -39,9 +39,9 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization)
 
-                implementation("io.ktor:ktor-client-cio:3.0.0-beta-1")
-                implementation("io.ktor:ktor-client-content-negotiation:3.0.0-beta-1")
-                implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.0-beta-1")
+                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.client.content.negotiation)
+                implementation(libs.ktor.serialization.kotlinx.json)
             }
         }
         val commonTest by getting {
@@ -51,9 +51,9 @@ kotlin {
         }
         val jvmMain by getting {
             dependencies {
-                implementation("io.ktor:ktor-server-content-negotiation:3.0.0-beta-1")
-                implementation("io.ktor:ktor-server-core:3.0.0-beta-1")
-                api("io.ktor:ktor-server-netty:3.0.0-beta-1")
+                implementation(libs.ktor.server.content.negotiation)
+                implementation(libs.ktor.server.core)
+                api(libs.ktor.server.netty)
             }
         }
         val jvmTest by getting

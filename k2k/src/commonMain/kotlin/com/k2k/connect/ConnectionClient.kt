@@ -5,6 +5,7 @@ import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.InetSocketAddress
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openWriteChannel
+import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 
 object ConnectionClient {

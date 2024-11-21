@@ -3,10 +3,9 @@ package com.k2k.discover
 import com.k2k.Constants.BROADCAST_ADDRESS
 import com.k2k.NetInterface
 import io.ktor.network.selector.SelectorManager
-import io.ktor.network.sockets.InetSocketAddress
-import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openWriteChannel
+import io.ktor.network.sockets.*
 import io.ktor.utils.io.close
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,10 +46,17 @@ object DiscoveryClient {
                 reuseAddress = true
             }
 
-            val output = socketConnection.openWriteChannel(autoFlush = true)
-            output.writeFully(data, 0, data.size)
-            output.close()
+            val datagram = Datagram(
+                packet = ByteReadPacket(data),
+                address = InetSocketAddress(address, port)
+            )
+            socketConnection.outgoing.send(datagram)
             socketConnection.close()
+
+//            val output = socketConnection.outgoing // openWriteChannel(autoFlush = true)
+//            output.writeFully(data, 0, data.size)
+//            output.close()
+//            socketConnection.close()
         }.onFailure {
             println("failed to write socket: ${it.message}")
         }

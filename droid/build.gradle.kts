@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.k2k.droid"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.k2k.droid"

@@ -8,7 +8,7 @@ import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.InetSocketAddress
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
-import io.ktor.utils.io.core.readUTF8Line
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -64,29 +64,26 @@ object DiscoveryServer {
         }
 
         while (true) {
-            serverSocket.openReadChannel()
             serverSocket.incoming.consumeEach { datagram ->
                 try {
-                    val receivedPacket = datagram.packet.readUTF8Line()
-                    if (receivedPacket != null) {
-                        val host = Constants.json.decodeFromString<Host>(receivedPacket).apply {
-                            val inetSocketAddress = datagram.address as InetSocketAddress
-                            hostAddress = inetSocketAddress.hostname
-                            this.port = inetSocketAddress.port
-                        }
-
-                        val keepHosts = hosts.value.filterValues {
-                            it + puffer >= Clock.System.now().toEpochMilliseconds()
-                        }.toMutableMap()
-
-                        if (hostIsClientToo || !currentHostIps.value.contains(host.hostAddress)) {
-                            if (host.filterMatch.matches(filter)) {
-                                keepHosts[host] = Clock.System.now().toEpochMilliseconds()
-                            }
-                        }
-                        println("discovery server, emit $keepHosts")
-                        hosts.emit(keepHosts)
+                    val receivedPacket = datagram.packet.readText()
+                    val host = Constants.json.decodeFromString<Host>(receivedPacket).apply {
+                        val inetSocketAddress = datagram.address as InetSocketAddress
+                        hostAddress = inetSocketAddress.hostname
+                        this.port = inetSocketAddress.port
                     }
+
+                    val keepHosts = hosts.value.filterValues {
+                        it + puffer >= Clock.System.now().toEpochMilliseconds()
+                    }.toMutableMap()
+
+                    if (hostIsClientToo || !currentHostIps.value.contains(host.hostAddress)) {
+                        if (host.filterMatch.matches(filter)) {
+                            keepHosts[host] = Clock.System.now().toEpochMilliseconds()
+                        }
+                    }
+                    println("discovery server, emit $keepHosts")
+                    hosts.emit(keepHosts)
                 } catch (e: Throwable) {
                     e.printStackTrace()
                     println("error: ${e.message}")

@@ -17,6 +17,7 @@ suspend fun uploadFile(file: ByteArray, fileName: String, ipAddress: String, por
         }
     }
 
+    println("submitFormWithBinaryData")
     val response = client.submitFormWithBinaryData(
         url = "http://$ipAddress:$port/upload",
         formData = formData {
@@ -39,8 +40,9 @@ suspend fun downloadFile(fileName: String, ipAddress: String, port: Int): ByteAr
             json()
         }
     }
+    println("download file from client")
     val response = client.get("http://$ipAddress:$port/download/$fileName")
-
+    println("download file from client with response: $response")
     return if (response.status == HttpStatusCode.OK) {
         val bytes = response.readBytes()
         bytes

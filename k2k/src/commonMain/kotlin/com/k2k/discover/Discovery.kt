@@ -49,7 +49,7 @@ class Discovery private constructor(
 
     fun makeDiscoverable(
         hostname: String,
-        filterMatch: String = String(),
+        filterMatch: String = "",
         // optionalInfo: JsonElement? = null
     ) = makeDiscoverable(Host(hostname, filterMatch))
 

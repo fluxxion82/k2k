@@ -1,13 +1,13 @@
 [versions]
-agp = "8.2.1"
-kotlin = "2.1.0-Beta2"
+agp = "8.7.2"
+kotlin = "2.1.0-RC2"
 kotlinx-datetime = "0.6.1"
 kotlinx-coroutines = "1.9.0"
 kotlinx-serialization = "1.7.3"
 
-ktor = "3.0.0-beta-1"
+ktor = "3.0.1"
 
-jetpack-compose = "1.7.0"
+jetpack-compose = "1.7.1"
 androidxComposeMaterial3 = "1.1.0-rc01"
 
 [libraries]
@@ -16,15 +16,22 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-network = { module = "io.ktor:ktor-network", version.ref = "ktor" }
 ktor-network-tls = { module = "io.ktor:ktor-network-tls", version.ref = "ktor" }
 
-androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.3" }
-androidx-core-kts = { module = "androidx.core:core-ktx", version = "1.13.1" }
-androidx-lifecycle-runtime-kts = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.8.6" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 
-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version = "2024.10.00" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.3" }
+androidx-core-kts = { module = "androidx.core:core-ktx", version = "1.15.0" }
+androidx-lifecycle-runtime-kts = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.8.7" }
+
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version = "2024.11.00" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics"}
@@ -42,4 +49,4 @@ kotlin-android-gradlePlugin = { id = "org.jetbrains.kotlin.android", version.ref
 
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref ="jetpack-compose" }
 jetbrains-kotlin-cocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
-native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.0-ALPHA-31" }
+native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.0-ALPHA-37-kotlin-2.1.0-RC" }

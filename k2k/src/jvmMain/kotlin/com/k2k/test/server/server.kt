@@ -9,6 +9,8 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.utils.io.*
+import kotlinx.coroutines.flow.asFlow
 import java.io.File
 
 fun startServer(
@@ -31,8 +33,10 @@ fun startServer(
                             tempFile?.createNewFile()
                         }
 
-                        val fileBytes = part.streamProvider().readBytes()
-                        tempFile!!.writeBytes(fileBytes)
+                        val fileBytes = part.provider.asFlow()
+                        fileBytes.collect  {
+                            tempFile!!.writeBytes(it.toByteArray())
+                        }
                     }
                     part.dispose()
                 }

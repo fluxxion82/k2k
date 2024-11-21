@@ -9,7 +9,7 @@ data class Host(
     @Serializable
     val name: String,
     @Serializable
-    val filterMatch: String = String(),
+    val filterMatch: String = "",
 ) {
     @Transient
     lateinit var hostAddress: String
