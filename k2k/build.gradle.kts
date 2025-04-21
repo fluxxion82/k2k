@@ -16,9 +16,7 @@ repositories {
 
 kotlin {
     applyDefaultHierarchyTemplate()
-    jvm {
-        withJava()
-    }
+    jvm()
 
     val iosTarget: (String, org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.() -> Unit) -> org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget = when {
         System.getenv("SDK_NAME")?.startsWith("iphoneos") == true -> ::iosArm64
