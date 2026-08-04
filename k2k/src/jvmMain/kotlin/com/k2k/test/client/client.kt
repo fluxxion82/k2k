@@ -9,6 +9,30 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.forms.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.http.*
+import com.k2k.test.tls.K2kClientTls
+import com.k2k.test.tls.SpkiPinningTrustManager
+import io.ktor.network.tls.addKeyStore
+
+private fun httpScheme(tls: K2kClientTls?): String = if (tls != null) "https" else "http"
+
+/**
+ * Builds a client. When [tls] is set the CIO engine presents this device's certificate (mTLS) and
+ * pins the server's certificate by SPKI, so a MITM or unpaired host fails the handshake before any
+ * vault bytes move. When null the client is plaintext (legacy behaviour).
+ */
+private fun k2kHttpClient(tls: K2kClientTls?): HttpClient = HttpClient(CIO) {
+    install(ContentNegotiation) { json() }
+    if (tls != null) {
+        engine {
+            https {
+                // alias = null: let ktor enumerate the keystore's own (correctly-cased) key
+                // entries rather than matching a possibly differently-cased preferred alias.
+                addKeyStore(tls.keyStore, tls.keyStorePassword, null)
+                trustManager = SpkiPinningTrustManager(tls.serverPins)
+            }
+        }
+    }
+}
 
 suspend fun uploadFile(
     file: ByteArray,
@@ -16,17 +40,15 @@ suspend fun uploadFile(
     ipAddress: String,
     port: Int,
     path: String = "/upload",
+    tls: K2kClientTls? = null,
 ) {
-    val client = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json()
-        }
-    }
+    val client = k2kHttpClient(tls)
+    val scheme = httpScheme(tls)
 
     try {
-        println("k2k.uploadFile to http://$ipAddress:$port$path (file=$fileName, ${file.size} bytes)")
+        println("k2k.uploadFile to $scheme://$ipAddress:$port$path (file=$fileName, ${file.size} bytes)")
         val response = client.submitFormWithBinaryData(
-            url = "http://$ipAddress:$port$path",
+            url = "$scheme://$ipAddress:$port$path",
             formData = formData {
                 append("file", file, Headers.build {
                     append(HttpHeaders.ContentDisposition, "filename=$fileName")
@@ -56,13 +78,10 @@ suspend fun downloadFile(
     ipAddress: String,
     port: Int,
     basePath: String = "/download",
+    tls: K2kClientTls? = null,
 ): ByteArray? {
-    val client = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json()
-        }
-    }
-    val url = "http://$ipAddress:$port$basePath/$fileName"
+    val client = k2kHttpClient(tls)
+    val url = "${httpScheme(tls)}://$ipAddress:$port$basePath/$fileName"
     println("k2k.downloadFile GET $url")
     return try {
         val response = client.get(url)
@@ -86,13 +105,10 @@ suspend fun requestSyncPull(
     clientPublicKey: ByteArray,
     ipAddress: String,
     port: Int,
+    tls: K2kClientTls? = null,
 ): ByteArray? {
-    val client = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json()
-        }
-    }
-    val url = "http://$ipAddress:$port/sync-pull/$kind"
+    val client = k2kHttpClient(tls)
+    val url = "${httpScheme(tls)}://$ipAddress:$port/sync-pull/$kind"
     println("k2k.requestSyncPull POST $url (${clientPublicKey.size} pubkey bytes)")
     return try {
         val response = client.post(url) {

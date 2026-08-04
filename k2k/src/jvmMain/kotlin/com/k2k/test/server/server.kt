@@ -10,6 +10,9 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
+import com.k2k.test.tls.K2kServerTls
+import com.k2k.test.tls.buildNettySslContext
+import io.netty.handler.ssl.SslContext
 import kotlinx.coroutines.flow.asFlow
 import java.io.File
 import java.io.OutputStream
@@ -22,8 +25,24 @@ fun startServer(
     artifactUploadHandlers: Map<String, suspend (ByteArray, String) -> Unit> = emptyMap(),
     artifactDownloadHandlers: Map<String, suspend (String) -> ByteArray> = emptyMap(),
     syncPullHandlers: Map<String, suspend (ByteArray) -> ByteArray?> = emptyMap(),
+    serverTls: K2kServerTls? = null,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
-    return embeddedServer(Netty, port = port) {
+    // Built once and shared; a fresh SslHandler is created per channel below. When null the
+    // server stays plaintext (legacy behaviour); when set, every connection is mutually
+    // authenticated and the peer certificate is SPKI-pinned to a paired device.
+    val sslContext: SslContext? = serverTls?.buildNettySslContext()
+    return embeddedServer(
+        Netty,
+        configure = {
+            // The configure-capable overload takes no `port`, so bind the connector here.
+            connector { this.port = port }
+            if (sslContext != null) {
+                channelPipelineConfig = { pipeline ->
+                    pipeline.addFirst("ssl", sslContext.newHandler(pipeline.channel().alloc()))
+                }
+            }
+        },
+    ) {
         install(ContentNegotiation)
         routing {
             post("/upload") {
