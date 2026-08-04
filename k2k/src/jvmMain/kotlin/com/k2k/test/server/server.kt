@@ -26,6 +26,11 @@ fun startServer(
     artifactDownloadHandlers: Map<String, suspend (String) -> ByteArray> = emptyMap(),
     syncPullHandlers: Map<String, suspend (ByteArray) -> ByteArray?> = emptyMap(),
     serverTls: K2kServerTls? = null,
+    // DoS caps applied BEFORE any crypto/parse: reject an upload once its streamed body exceeds
+    // maxUploadBytes, and reject a sync-pull whose request body (the client public key) is larger
+    // than maxSyncPullRequestBytes. Both bound memory/disk an unauthenticated-shaped flood can force.
+    maxUploadBytes: Long = 25L * 1024 * 1024,
+    maxSyncPullRequestBytes: Long = 64L * 1024,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     // Built once and shared; a fresh SslHandler is created per channel below. When null the
     // server stays plaintext (legacy behaviour); when set, every connection is mutually
@@ -46,7 +51,7 @@ fun startServer(
         install(ContentNegotiation)
         routing {
             post("/upload") {
-                handleUpload(tempFilePath, onFileUploaded)
+                handleUpload(tempFilePath, onFileUploaded, maxUploadBytes)
             }
 
             get("/download/{fileName}") {
@@ -55,7 +60,7 @@ fun startServer(
 
             for ((kind, handler) in artifactUploadHandlers) {
                 post("/upload/$kind") {
-                    handleUpload(tempFilePath, handler)
+                    handleUpload(tempFilePath, handler, maxUploadBytes)
                 }
             }
 
@@ -67,7 +72,16 @@ fun startServer(
 
             for ((kind, handler) in syncPullHandlers) {
                 post("/sync-pull/$kind") {
+                    val declaredLength = call.request.contentLength()
+                    if (declaredLength != null && declaredLength > maxSyncPullRequestBytes) {
+                        call.respond(HttpStatusCode.PayloadTooLarge, "request too large")
+                        return@post
+                    }
                     val clientPubkey = call.receive<ByteArray>()
+                    if (clientPubkey.size > maxSyncPullRequestBytes) {
+                        call.respond(HttpStatusCode.PayloadTooLarge, "request too large")
+                        return@post
+                    }
                     val result = try {
                         handler(clientPubkey)
                     } catch (t: Throwable) {
@@ -88,15 +102,26 @@ fun startServer(
     }
 }
 
+private class UploadTooLargeException : Exception("upload exceeds size cap")
+
 private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     tempFilePath: String,
     onFileUploaded: suspend (ByteArray, String) -> Unit,
+    maxUploadBytes: Long,
 ) {
     println("upload file")
+    // Reject early on a declared oversize body so a flood never gets to stream to disk.
+    val declaredLength = call.request.contentLength()
+    if (declaredLength != null && declaredLength > maxUploadBytes) {
+        call.respond(HttpStatusCode.PayloadTooLarge, "upload too large")
+        return
+    }
     val multipart = call.receiveMultipart()
     var tempFile: File? = null
     var tempOutputStream: OutputStream? = null
     var rejected = false
+    var tooLarge = false
+    var written = 0L
     try {
         multipart.forEachPart { part ->
             if (part is PartData.FileItem) {
@@ -111,20 +136,30 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
                     }
                 }
                 if (!rejected) {
-                    part.provider.asFlow().collect {
-                        tempOutputStream?.write(it.toByteArray())
+                    part.provider.asFlow().collect { chunk ->
+                        val arr = chunk.toByteArray()
+                        written += arr.size
+                        // Enforce the cap mid-stream even when Content-Length lied or was chunked.
+                        if (written > maxUploadBytes) throw UploadTooLargeException()
+                        tempOutputStream?.write(arr)
                     }
                 }
             }
             part.dispose()
         }
+    } catch (e: UploadTooLargeException) {
+        tooLarge = true
     } finally {
         tempOutputStream?.close()
     }
     println("upload complete")
 
     val uploaded = tempFile
-    if (rejected || uploaded == null || !uploaded.exists()) {
+    if (tooLarge) {
+        uploaded?.delete()
+        call.respond(HttpStatusCode.PayloadTooLarge, "upload too large")
+    } else if (rejected || uploaded == null || !uploaded.exists()) {
+        uploaded?.delete()
         call.respond(HttpStatusCode.BadRequest, "no valid file uploaded")
     } else {
         try {
