@@ -2,7 +2,9 @@ package com.k2k
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.allocPointerTo
 import kotlinx.cinterop.memScoped
@@ -15,12 +17,14 @@ import kotlinx.cinterop.value
 import platform.darwin.freeifaddrs
 import platform.darwin.getifaddrs
 import platform.darwin.ifaddrs
+import platform.darwin.inet_ntop
 import platform.posix.AF_INET
 import platform.posix.AF_INET6
+import platform.posix.INET_ADDRSTRLEN
 import platform.posix.NI_MAXHOST
 import platform.posix.NI_NUMERICHOST
 import platform.posix.getnameinfo
-import platform.posix.sockaddr
+import platform.posix.sockaddr_in
 import platform.posix.socklen_t
 
 actual object NetInterface {
@@ -55,29 +59,32 @@ actual object NetInterface {
 
     @OptIn(ExperimentalForeignApi::class)
     actual fun getLocalAddress(): String  {
-        val ifa: ifaddrs = memScoped {
-            val ifap = allocPointerTo<ifaddrs>()
-            getifaddrs(ifap.ptr)
-            ifap.pointed!!
-        }
-        var address: String? = null
-        var ifaPtr: CPointer<ifaddrs>? = ifa.ptr
-        while (ifaPtr != null) {
-            val ifa: ifaddrs = ifaPtr.pointed
-            val sa: sockaddr = ifa.ifa_addr!!.pointed
-            if (sa.sa_family.toInt() == AF_INET || sa.sa_family.toInt() == AF_INET6) {
-                val hostBuffer = ByteArray(NI_MAXHOST)
-                getnameinfo(
-                    sa.ptr.reinterpret(), sa.sa_len.toUInt(),
-                    hostBuffer.refTo(0), hostBuffer.size.toUInt(),
-                    null, 0u, NI_NUMERICHOST
-                )
-                address = hostBuffer.toKString()
-                break
+        return memScoped {
+            val ifaddrsPtr = alloc<CPointerVar<ifaddrs>>()
+            if (getifaddrs(ifaddrsPtr.ptr) != 0) return ""
+
+            var currentInterface = ifaddrsPtr.value
+            while (currentInterface != null) {
+                val interfaceName = currentInterface.pointed.ifa_name?.toKString()
+                if (interfaceName == "en0") { // Wi-Fi interface
+                    val addr = currentInterface.pointed.ifa_addr?.reinterpret<sockaddr_in>()
+                    if (addr != null && addr.pointed.sin_family.toInt() == AF_INET) {
+                        val ipBytes = ByteArray(INET_ADDRSTRLEN)
+                        val ip = inet_ntop(
+                            AF_INET,
+                            addr.pointed.sin_addr.ptr,
+                            ipBytes.refTo(0),
+                            ipBytes.size.toUInt()
+                        )?.toKString()
+                        freeifaddrs(ifaddrsPtr.value)
+                        return@memScoped ip.orEmpty()
+                    }
+                }
+                currentInterface = currentInterface.pointed.ifa_next
             }
-            ifaPtr = ifa.ifa_next
+
+            freeifaddrs(ifaddrsPtr.value)
+            ""
         }
-        freeifaddrs(ifa.ptr)
-        return address ?: ""
     }
 }

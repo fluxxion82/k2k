@@ -2,9 +2,8 @@ package com.k2k.discover
 
 import com.k2k.Constants.BROADCAST_ADDRESS
 import com.k2k.NetInterface
-import io.ktor.network.selector.SelectorManager
+import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
-import io.ktor.utils.io.close
 import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

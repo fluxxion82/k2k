@@ -1,11 +1,25 @@
+# Versions here are kept in step with passmanShared/gradle/libs.versions.toml.
+#
+# This catalog is only used when k2k is built standalone. When k2k is included as a
+# subproject — passmanShared, passmanClient and moviePicker all do this — `libs` resolves
+# to *that* build's catalog, not this file. Letting the two drift is how the standalone
+# build silently broke: k2k/src/commonMain DiscoveryServer.kt imports kotlin.time.Clock,
+# stable only since Kotlin 2.3, while this file still pinned 2.1.20.
+#
+# k2k/build.gradle.kts may therefore only reference catalog keys that every consumer
+# provides. As of 2026-08-02 that set is: kotlinx-coroutines-core, kotlinx-datetime,
+# kotlinx-serialization, ktor-client-{core,cio,content-negotiation}, ktor-network,
+# ktor-network-tls, ktor-serialization-kotlinx-json, ktor-server-{core,content-negotiation,
+# netty}, and the kotlin-serialization plugin. Verified present in moviePicker's catalog.
+
 [versions]
 agp = "8.9.1"
-kotlin = "2.1.20"
-kotlinx-datetime = "0.6.2"
-kotlinx-coroutines = "1.10.2"
-kotlinx-serialization = "1.8.1"
+kotlin = "2.4.10"
+kotlinx-datetime = "0.8.0"
+kotlinx-coroutines = "1.11.0"
+kotlinx-serialization = "1.11.0"
 
-ktor = "3.1.1"
+ktor = "3.5.2"
 
 jetpack-compose = "1.7.1"
 androidxComposeMaterial3 = "1.1.0-rc01"
@@ -26,6 +40,7 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.10.1" }
 androidx-core-kts = { module = "androidx.core:core-ktx", version = "1.16.0" }
@@ -43,10 +58,16 @@ kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref 
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 kotlin-android-gradlePlugin = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref ="jetpack-compose" }
 jetbrains-kotlin-cocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
-native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.0-ALPHA-37-kotlin-2.1.0-RC" }
+# The trailing -kotlin-<version> names the Kotlin build this compiler plugin was compiled
+# against, and must track the kotlin version above. Compiler plugins are rejected outright
+# by a mismatched compiler, so this is not optional.
+native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.4-kotlin-2.4.10-RC" }

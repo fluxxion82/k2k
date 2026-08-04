@@ -1,10 +1,8 @@
 package com.k2k.connect
 
 import com.k2k.Host
-import io.ktor.network.selector.SelectorManager
-import io.ktor.network.sockets.InetSocketAddress
-import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openWriteChannel
+import io.ktor.network.selector.*
+import io.ktor.network.sockets.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 

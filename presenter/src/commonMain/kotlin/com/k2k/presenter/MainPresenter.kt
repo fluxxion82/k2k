@@ -30,8 +30,10 @@ open class MainPresenter(val name: String, val receiving: Boolean): CoroutineSco
             .setHostIsClient(false)
             .build()
 
+    // Explicit type required: KMP-NativeCoroutines needs a declared return type on
+    // annotated declarations to generate the Swift-facing wrapper.
     @NativeCoroutinesState
-    val foundPeers = MutableStateFlow(listOf<Host>())
+    val foundPeers: MutableStateFlow<List<Host>> = MutableStateFlow(listOf())
 
     fun onStart() {
         if (clickCounter == 1) {
