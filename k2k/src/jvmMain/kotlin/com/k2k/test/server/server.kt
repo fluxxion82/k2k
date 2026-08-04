@@ -11,8 +11,12 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
 import com.k2k.test.tls.K2kServerTls
+import com.k2k.test.tls.SpkiPinning
 import com.k2k.test.tls.buildNettySslContext
+import io.ktor.server.netty.NettyApplicationCall
 import io.netty.handler.ssl.SslContext
+import io.netty.handler.ssl.SslHandler
+import java.security.cert.X509Certificate
 import kotlinx.coroutines.flow.asFlow
 import java.io.File
 import java.io.OutputStream
@@ -31,6 +35,11 @@ fun startServer(
     // than maxSyncPullRequestBytes. Both bound memory/disk an unauthenticated-shaped flood can force.
     maxUploadBytes: Long = 25L * 1024 * 1024,
     maxSyncPullRequestBytes: Long = 64L * 1024,
+    // Per-operation authorization. Called with the op ("passwords"/"pgp-keys"/"keystore") and the
+    // connecting client's verified SPKI pin (null if unavailable). Return false to reject with 403.
+    // Null (default) = allow all, so the plaintext pairing server and legacy callers are unaffected.
+    // ClientAuth.REQUIRE already limits callers to paired devices; this narrows *which op* each may do.
+    authorizer: (suspend (op: String, pin: String?) -> Boolean)? = null,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     // Built once and shared; a fresh SslHandler is created per channel below. When null the
     // server stays plaintext (legacy behaviour); when set, every connection is mutually
@@ -51,6 +60,7 @@ fun startServer(
         install(ContentNegotiation)
         routing {
             post("/upload") {
+                if (!authorizeOp("passwords", authorizer)) return@post
                 handleUpload(tempFilePath, onFileUploaded, maxUploadBytes)
             }
 
@@ -60,6 +70,7 @@ fun startServer(
 
             for ((kind, handler) in artifactUploadHandlers) {
                 post("/upload/$kind") {
+                    if (!authorizeOp(kind, authorizer)) return@post
                     handleUpload(tempFilePath, handler, maxUploadBytes)
                 }
             }
@@ -72,6 +83,7 @@ fun startServer(
 
             for ((kind, handler) in syncPullHandlers) {
                 post("/sync-pull/$kind") {
+                    if (!authorizeOp(kind, authorizer)) return@post
                     val declaredLength = call.request.contentLength()
                     if (declaredLength != null && declaredLength > maxSyncPullRequestBytes) {
                         call.respond(HttpStatusCode.PayloadTooLarge, "request too large")
@@ -103,6 +115,34 @@ fun startServer(
 }
 
 private class UploadTooLargeException : Exception("upload exceeds size cap")
+
+/**
+ * Verified SPKI pin of the connecting client's leaf certificate, or null if there is no TLS session
+ * (plaintext) or the peer is unverified. With ClientAuth.REQUIRE the peer cert is always present and
+ * already pin-checked by the trust manager; this identifies *which* paired device is calling.
+ */
+private fun io.ktor.server.routing.RoutingContext.peerSpkiPin(): String? = runCatching {
+    // In ktor routing, `call` is a RoutingCall wrapper -> pipelineCall -> engineCall (the Netty call).
+    val engineCall = (call as? io.ktor.server.routing.RoutingCall)?.pipelineCall?.engineCall ?: call
+    val ctx = (engineCall as? NettyApplicationCall)?.context ?: return null
+    val ssl = ctx.pipeline().get(SslHandler::class.java) ?: return null
+    val leaf = ssl.engine().session.peerCertificates.firstOrNull() as? X509Certificate ?: return null
+    SpkiPinning.pinOf(leaf)
+}.getOrNull()
+
+/**
+ * Runs [authorizer] for [op] against the caller's pin. Returns true to proceed; on denial responds
+ * 403 and returns false so the route short-circuits. A null authorizer allows everything.
+ */
+private suspend fun io.ktor.server.routing.RoutingContext.authorizeOp(
+    op: String,
+    authorizer: (suspend (op: String, pin: String?) -> Boolean)?,
+): Boolean {
+    if (authorizer == null) return true
+    if (authorizer(op, peerSpkiPin())) return true
+    call.respond(HttpStatusCode.Forbidden, "operation '$op' not permitted for this device")
+    return false
+}
 
 private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     tempFilePath: String,
