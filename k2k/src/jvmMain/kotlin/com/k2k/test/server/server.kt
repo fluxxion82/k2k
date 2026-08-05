@@ -97,10 +97,10 @@ fun startServer(
                     val result = try {
                         handler(clientPubkey)
                     } catch (t: Throwable) {
-                        call.respond(
-                            HttpStatusCode.InternalServerError,
-                            t.message ?: "sync-pull failed",
-                        )
+                        // Log the detail locally; the response body stays generic so internal
+                        // paths/crypto errors never leak to the network.
+                        println("sync-pull '$kind' failed: ${t.message}")
+                        call.respond(HttpStatusCode.InternalServerError, "sync-pull failed")
                         return@post
                     }
                     if (result != null && result.isNotEmpty()) {
@@ -158,6 +158,7 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     }
     val multipart = call.receiveMultipart()
     var tempFile: File? = null
+    var uploadName: String? = null
     var tempOutputStream: OutputStream? = null
     var rejected = false
     var tooLarge = false
@@ -171,7 +172,10 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
                     if (safeName.isEmpty() || safeName == "." || safeName == "..") {
                         rejected = true
                     } else {
-                        tempFile = File(tempFilePath, safeName).apply { createNewFile() }
+                        // Unique temp file per request: concurrent uploads of the same logical
+                        // name must not share (and truncate) one on-disk file.
+                        uploadName = safeName
+                        tempFile = File.createTempFile("$safeName.", ".part", File(tempFilePath))
                         tempOutputStream = tempFile!!.outputStream().buffered()
                     }
                 }
@@ -203,13 +207,13 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
         call.respond(HttpStatusCode.BadRequest, "no valid file uploaded")
     } else {
         try {
-            onFileUploaded(uploaded.readBytes(), uploaded.name)
+            onFileUploaded(uploaded.readBytes(), uploadName ?: uploaded.name)
             call.respondText("200")
         } catch (t: Throwable) {
-            call.respond(
-                HttpStatusCode.InternalServerError,
-                t.message ?: "upload processing failed",
-            )
+            println("upload processing failed: ${t.message}")
+            call.respond(HttpStatusCode.InternalServerError, "upload processing failed")
+        } finally {
+            uploaded.delete()
         }
     }
 }
