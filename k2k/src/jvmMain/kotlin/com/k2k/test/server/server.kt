@@ -65,6 +65,7 @@ fun startServer(
             }
 
             get("/download/{fileName}") {
+                if (!authorizeOp("download", authorizer)) return@get
                 handleDownload(call.parameters["fileName"]!!, getFileFromName)
             }
 
@@ -77,6 +78,7 @@ fun startServer(
 
             for ((kind, handler) in artifactDownloadHandlers) {
                 get("/download/$kind/{fileName}") {
+                    if (!authorizeOp(kind, authorizer)) return@get
                     handleDownload(call.parameters["fileName"]!!, handler)
                 }
             }

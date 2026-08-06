@@ -1,6 +1,7 @@
 package com.k2k.test.tls
 
 import com.k2k.test.client.uploadFile
+import com.k2k.test.client.downloadFile
 import com.k2k.test.server.startServer
 import java.net.ServerSocket
 import java.security.KeyStore
@@ -8,6 +9,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFails
+import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -58,6 +60,7 @@ class PerOpAuthzIntegrationTest {
             getFileFromName = { ByteArray(0) },
             onFileUploaded = { _, _ -> },
             artifactUploadHandlers = mapOf("pgp-keys" to { _, _ -> }),
+            artifactDownloadHandlers = mapOf("pgp-keys" to { "artifact".toByteArray() }),
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
             authorizer = { op, pin -> pin == bobPin && op == "passwords" },
         ).also { it.start(wait = false) }
@@ -104,5 +107,25 @@ class PerOpAuthzIntegrationTest {
                 tls = bobTls(),
             )
         }
+    }
+
+    @Test
+    fun deniedOp_defaultDownload_isRejected() = runBlocking<Unit> {
+        startAliceServer()
+        assertNull(downloadFile("hybridPublicKey", "127.0.0.1", port, tls = bobTls()))
+    }
+
+    @Test
+    fun deniedOp_artifactDownload_isRejected() = runBlocking<Unit> {
+        startAliceServer()
+        assertNull(
+            downloadFile(
+                fileName = "bundle",
+                ipAddress = "127.0.0.1",
+                port = port,
+                basePath = "/download/pgp-keys",
+                tls = bobTls(),
+            )
+        )
     }
 }
