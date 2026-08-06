@@ -73,7 +73,12 @@ kotlin {
                 api(libs.ktor.server.cio)
             }
         }
-        getByName("jvmMain") { dependsOn(jvmSources) }
+        getByName("jvmMain") {
+            dependsOn(jvmSources)
+            dependencies {
+                implementation(libs.ktor.client.okhttp)
+            }
+        }
         getByName("nativeMain") {
             dependencies {
                 api(libs.ktor.server.cio)
@@ -87,4 +92,3 @@ kotlin {
         ios.deploymentTarget = "13.5"
     }
 }
-

@@ -4,6 +4,7 @@ import com.k2k.test.client.downloadFile
 import com.k2k.test.server.startServer
 import java.net.ServerSocket
 import java.security.KeyStore
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -120,5 +121,28 @@ class MutualTlsIntegrationTest {
                 tls = K2kClientTls(bob, password, alias, serverPins = setOf(malloryPin)),
             )
         }
+    }
+
+    @Test
+    fun k2kClient_negotiatesTls13() = runBlocking<Unit> {
+        val negotiatedProtocol = AtomicReference<String?>()
+        server = startServer(
+            port = port,
+            tempFilePath = tempDir,
+            getFileFromName = { "vault-bytes".toByteArray() },
+            onFileUploaded = { _, _ -> },
+            serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
+            onPeerTlsProtocol = negotiatedProtocol::set,
+        ).also { it.start(wait = false) }
+        awaitListening(port)
+
+        downloadFile(
+            fileName = "anything",
+            ipAddress = "127.0.0.1",
+            port = port,
+            tls = K2kClientTls(bob, password, alias, serverPins = setOf(alicePin)),
+        )
+
+        kotlin.test.assertEquals("TLSv1.3", negotiatedProtocol.get())
     }
 }

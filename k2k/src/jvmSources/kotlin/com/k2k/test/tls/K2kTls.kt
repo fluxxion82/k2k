@@ -6,6 +6,9 @@ import io.netty.handler.ssl.SslContextBuilder
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
+import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
 
 /**
  * TLS material for the k2k server side of a mutually-authenticated, SPKI-pinned connection.
@@ -33,6 +36,25 @@ class K2kClientTls(
     val keyAlias: String,
     val serverPins: Set<String>,
 )
+
+/**
+ * TLS state for an OkHttp client: the socket factory presents this device's certificate and the
+ * trust manager accepts only a paired server's SPKI pin.
+ */
+class K2kClientSslContext internal constructor(
+    val sslContext: SSLContext,
+    val pinningTrustManager: SpkiPinningTrustManager,
+)
+
+/** Build the JSSE state used by the TLS 1.3-capable OkHttp client engine. */
+fun K2kClientTls.buildSslContext(): K2kClientSslContext {
+    val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+    keyManagerFactory.init(keyStore, keyStorePassword)
+    val pinningTrustManager = SpkiPinningTrustManager(serverPins)
+    val sslContext = SSLContext.getInstance("TLS")
+    sslContext.init(keyManagerFactory.keyManagers, arrayOf<TrustManager>(pinningTrustManager), null)
+    return K2kClientSslContext(sslContext, pinningTrustManager)
+}
 
 /**
  * Resolve the key-entry alias tolerantly: exact match, then case-insensitive (PKCS#12 loaders

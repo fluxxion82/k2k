@@ -40,6 +40,9 @@ fun startServer(
     // Null (default) = allow all, so the plaintext pairing server and legacy callers are unaffected.
     // ClientAuth.REQUIRE already limits callers to paired devices; this narrows *which op* each may do.
     authorizer: (suspend (op: String, pin: String?) -> Boolean)? = null,
+    // Optional diagnostics hook. It is invoked from download handling with the protocol negotiated
+    // by the connecting peer, allowing integration tests to observe the actual client handshake.
+    onPeerTlsProtocol: ((String?) -> Unit)? = null,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     // Built once and shared; a fresh SslHandler is created per channel below. When null the
     // server stays plaintext (legacy behaviour); when set, every connection is mutually
@@ -68,6 +71,7 @@ fun startServer(
                 // Scope the op to the requested name so the authorizer can allow specific
                 // artifacts (e.g. public keys) without blanket-approving future handlers.
                 if (!authorizeOp("download/${call.parameters["fileName"]}", authorizer)) return@get
+                onPeerTlsProtocol?.invoke(peerTlsProtocol())
                 handleDownload(call.parameters["fileName"]!!, getFileFromName)
             }
 
@@ -81,6 +85,7 @@ fun startServer(
             for ((kind, handler) in artifactDownloadHandlers) {
                 get("/download/$kind/{fileName}") {
                     if (!authorizeOp(kind, authorizer)) return@get
+                    onPeerTlsProtocol?.invoke(peerTlsProtocol())
                     handleDownload(call.parameters["fileName"]!!, handler)
                 }
             }
@@ -132,6 +137,14 @@ private fun io.ktor.server.routing.RoutingContext.peerSpkiPin(): String? = runCa
     val ssl = ctx.pipeline().get(SslHandler::class.java) ?: return null
     val leaf = ssl.engine().session.peerCertificates.firstOrNull() as? X509Certificate ?: return null
     SpkiPinning.pinOf(leaf)
+}.getOrNull()
+
+/** Negotiated TLS protocol for the connecting peer, or null for plaintext/unavailable sessions. */
+private fun io.ktor.server.routing.RoutingContext.peerTlsProtocol(): String? = runCatching {
+    val engineCall = (call as? io.ktor.server.routing.RoutingCall)?.pipelineCall?.engineCall ?: call
+    val ctx = (engineCall as? NettyApplicationCall)?.context ?: return null
+    val ssl = ctx.pipeline().get(SslHandler::class.java) ?: return null
+    ssl.engine().session.protocol
 }.getOrNull()
 
 /**

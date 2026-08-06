@@ -1,34 +1,43 @@
 package com.k2k.test.client
 
 import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.client.engine.cio.*
+import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
+import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.http.*
 import com.k2k.test.tls.K2kClientTls
-import com.k2k.test.tls.SpkiPinningTrustManager
-import io.ktor.network.tls.addKeyStore
+import com.k2k.test.tls.buildSslContext
+import okhttp3.ConnectionSpec
+import okhttp3.TlsVersion
 
 private fun httpScheme(tls: K2kClientTls?): String = if (tls != null) "https" else "http"
 
 /**
- * Builds a client. When [tls] is set the CIO engine presents this device's certificate (mTLS) and
+ * Builds a client. When [tls] is set the OkHttp engine presents this device's certificate (mTLS) and
  * pins the server's certificate by SPKI, so a MITM or unpaired host fails the handshake before any
  * vault bytes move. When null the client is plaintext (legacy behaviour).
  */
-private fun k2kHttpClient(tls: K2kClientTls?): HttpClient = HttpClient(CIO) {
+private fun k2kHttpClient(tls: K2kClientTls?): HttpClient = HttpClient(OkHttp) {
     install(ContentNegotiation) { json() }
-    if (tls != null) {
-        engine {
-            https {
-                // alias = null: let ktor enumerate the keystore's own (correctly-cased) key
-                // entries rather than matching a possibly differently-cased preferred alias.
-                addKeyStore(tls.keyStore, tls.keyStorePassword, null)
-                trustManager = SpkiPinningTrustManager(tls.serverPins)
+    engine {
+        config {
+            if (tls != null) {
+                val clientTls = tls.buildSslContext()
+                sslSocketFactory(clientTls.sslContext.socketFactory, clientTls.pinningTrustManager)
+                hostnameVerifier { _, _ -> true }
+                connectionSpecs(
+                    listOf(
+                        ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
+                            .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
+                            .build(),
+                    ),
+                )
+            } else {
+                connectionSpecs(listOf(ConnectionSpec.CLEARTEXT))
             }
         }
     }
