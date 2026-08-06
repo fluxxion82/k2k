@@ -65,7 +65,9 @@ fun startServer(
             }
 
             get("/download/{fileName}") {
-                if (!authorizeOp("download", authorizer)) return@get
+                // Scope the op to the requested name so the authorizer can allow specific
+                // artifacts (e.g. public keys) without blanket-approving future handlers.
+                if (!authorizeOp("download/${call.parameters["fileName"]}", authorizer)) return@get
                 handleDownload(call.parameters["fileName"]!!, getFileFromName)
             }
 
