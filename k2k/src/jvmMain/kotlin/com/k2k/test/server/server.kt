@@ -163,39 +163,56 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     var rejected = false
     var tooLarge = false
     var written = 0L
+    var fileItemSeen = false
+    var partProcessingFailure: Throwable? = null
     try {
         multipart.forEachPart { part ->
-            if (part is PartData.FileItem) {
-                if (tempFile == null && !rejected) {
-                    val rawName = part.originalFileName ?: "blob"
-                    val safeName = File(rawName).name
-                    if (safeName.isEmpty() || safeName == "." || safeName == "..") {
+            try {
+                if (part is PartData.FileItem) {
+                    if (fileItemSeen) {
                         rejected = true
                     } else {
-                        // Unique temp file per request: concurrent uploads of the same logical
-                        // name must not share (and truncate) one on-disk file.
-                        uploadName = safeName
-                        tempFile = File.createTempFile("$safeName.", ".part", File(tempFilePath))
-                        tempOutputStream = tempFile!!.outputStream().buffered()
+                        fileItemSeen = true
+                        val rawName = part.originalFileName ?: "blob"
+                        val safeName = File(rawName).name
+                        if (safeName.isEmpty() || safeName == "." || safeName == "..") {
+                            rejected = true
+                        } else {
+                            // Unique temp file per request: concurrent uploads of the same logical
+                            // name must not share (and truncate) one on-disk file.
+                            uploadName = safeName
+                            tempFile = File.createTempFile("$safeName.", ".part", File(tempFilePath))
+                            tempOutputStream = tempFile!!.outputStream().buffered()
+                        }
+                    }
+                    if (!rejected) {
+                        part.provider.asFlow().collect { chunk ->
+                            val arr = chunk.toByteArray()
+                            written += arr.size
+                            // Enforce the cap mid-stream even when Content-Length lied or was chunked.
+                            if (written > maxUploadBytes) throw UploadTooLargeException()
+                            tempOutputStream?.write(arr)
+                        }
                     }
                 }
-                if (!rejected) {
-                    part.provider.asFlow().collect { chunk ->
-                        val arr = chunk.toByteArray()
-                        written += arr.size
-                        // Enforce the cap mid-stream even when Content-Length lied or was chunked.
-                        if (written > maxUploadBytes) throw UploadTooLargeException()
-                        tempOutputStream?.write(arr)
-                    }
-                }
+            } finally {
+                part.dispose()
             }
-            part.dispose()
         }
     } catch (e: UploadTooLargeException) {
         tooLarge = true
+    } catch (t: Throwable) {
+        partProcessingFailure = t
     } finally {
-        tempOutputStream?.close()
+        try {
+            tempOutputStream?.close()
+        } catch (t: Throwable) {
+            tempFile?.delete()
+            throw t
+        }
+        if (partProcessingFailure != null) tempFile?.delete()
     }
+    partProcessingFailure?.let { throw it }
     println("upload complete")
 
     val uploaded = tempFile
