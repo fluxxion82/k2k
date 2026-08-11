@@ -42,7 +42,7 @@ class UploadValidationIntegrationTest {
             port = port,
             tempFilePath = tempDir,
             getFileFromName = { ByteArray(0) },
-            onFileUploaded = { _, _ -> uploadedCount++ },
+            onFileUploaded = { _, _, _ -> uploadedCount++ },
         ).also { it.start(wait = false) }
         awaitListening()
 
@@ -57,6 +57,38 @@ class UploadValidationIntegrationTest {
         assertEquals(HttpStatusCode.BadRequest, response.status)
         assertEquals(0, uploadedCount)
         assertTrue(java.io.File(tempDir).listFiles().isNullOrEmpty())
+    }
+
+    /**
+     * A plaintext (no-TLS) listener has no verified caller identity, so the handler must receive a
+     * null pin — never a fabricated one. The receive policy fails closed on null, so inventing a pin
+     * here would be the bug that turns "unauthenticated" into "authenticated as somebody".
+     */
+    @Test
+    fun plaintextUpload_deliversNullCallerPinToHandler() = runBlocking {
+        var invoked = false
+        var receivedPin: String? = "unset"
+        server = startServer(
+            port = port,
+            tempFilePath = tempDir,
+            getFileFromName = { ByteArray(0) },
+            onFileUploaded = { _, _, pin ->
+                invoked = true
+                receivedPin = pin
+            },
+        ).also { it.start(wait = false) }
+        awaitListening()
+
+        val response = client.submitFormWithBinaryData(
+            url = "http://127.0.0.1:$port/upload",
+            formData = formData {
+                append("file", "payload".encodeToByteArray(), fileHeaders("blob"))
+            },
+        )
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertTrue(invoked, "the upload handler must run for a valid plaintext upload")
+        assertEquals(null, receivedPin)
     }
 
     private fun fileHeaders(fileName: String): Headers = Headers.build {

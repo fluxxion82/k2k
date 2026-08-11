@@ -48,10 +48,14 @@ fun startServer(
     port: Int,
     tempFilePath: String,
     getFileFromName: suspend (String) -> ByteArray,
-    onFileUploaded: suspend (ByteArray, String) -> Unit,
-    artifactUploadHandlers: Map<String, suspend (ByteArray, String) -> Unit> = emptyMap(),
+    // Upload and sync-pull handlers receive the verified SPKI pin of the mTLS caller as their last
+    // parameter, so the application can resolve WHICH paired device sent the payload before touching
+    // it. Null means there is no verified TLS identity (a plaintext listener) — deliberately so: the
+    // pairing listener is plaintext by design and its handlers must not be handed a fabricated pin.
+    onFileUploaded: suspend (ByteArray, String, String?) -> Unit,
+    artifactUploadHandlers: Map<String, suspend (ByteArray, String, String?) -> Unit> = emptyMap(),
     artifactDownloadHandlers: Map<String, suspend (String) -> ByteArray> = emptyMap(),
-    syncPullHandlers: Map<String, suspend (ByteArray) -> ByteArray?> = emptyMap(),
+    syncPullHandlers: Map<String, suspend (ByteArray, String?) -> ByteArray?> = emptyMap(),
     serverTls: K2kServerTls? = null,
     // DoS caps applied BEFORE any crypto/parse: reject an upload once its streamed body exceeds
     // maxUploadBytes, and reject a sync-pull whose request body (the client public key) is larger
@@ -136,7 +140,7 @@ fun startServer(
                         return@post
                     }
                     val result = try {
-                        handler(clientPubkey)
+                        handler(clientPubkey, peerSpkiPin())
                     } catch (t: Throwable) {
                         // Log the detail locally; the response body stays generic so internal
                         // paths/crypto errors never leak to the network.
@@ -306,7 +310,7 @@ private suspend fun io.ktor.server.routing.RoutingContext.authorizeOp(
 
 private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     tempFilePath: String,
-    onFileUploaded: suspend (ByteArray, String) -> Unit,
+    onFileUploaded: suspend (ByteArray, String, String?) -> Unit,
     maxUploadBytes: Long,
 ) {
     println("upload file")
@@ -384,7 +388,7 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
         call.respond(HttpStatusCode.BadRequest, "no valid file uploaded")
     } else {
         try {
-            onFileUploaded(uploaded.readBytes(), uploadName ?: uploaded.name)
+            onFileUploaded(uploaded.readBytes(), uploadName ?: uploaded.name, peerSpkiPin())
             call.respondText("200")
         } catch (t: Throwable) {
             println("upload processing failed: ${t.message}")

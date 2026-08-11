@@ -1,6 +1,8 @@
 package com.k2k.test.tls
 
 import com.k2k.test.client.downloadFile
+import com.k2k.test.client.requestSyncPull
+import com.k2k.test.client.uploadFile
 import com.k2k.test.server.startServer
 import java.net.ServerSocket
 import java.security.KeyStore
@@ -65,7 +67,7 @@ class MutualTlsIntegrationTest {
             port = port,
             tempFilePath = tempDir,
             getFileFromName = { "vault-bytes".toByteArray() },
-            onFileUploaded = { _, _ -> },
+            onFileUploaded = { _, _, _ -> },
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
         ).also { it.start(wait = false) }
         awaitListening(port)
@@ -130,7 +132,7 @@ class MutualTlsIntegrationTest {
             port = port,
             tempFilePath = tempDir,
             getFileFromName = { "vault-bytes".toByteArray() },
-            onFileUploaded = { _, _ -> },
+            onFileUploaded = { _, _, _ -> },
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
             onPeerTlsProtocol = negotiatedProtocol::set,
         ).also { it.start(wait = false) }
@@ -144,5 +146,38 @@ class MutualTlsIntegrationTest {
         )
 
         kotlin.test.assertEquals("TLSv1.3", negotiatedProtocol.get())
+    }
+
+    /**
+     * The verified caller identity reaches the application handlers: an upload and a sync-pull from
+     * Bob must hand the server-side handler Bob's SPKI pin — not null, and not any other device's
+     * pin — so the receiver can resolve WHICH paired device sent the payload before processing it.
+     */
+    @Test
+    fun verifiedCallerPin_isThreadedToUploadAndSyncPullHandlers() = runBlocking<Unit> {
+        val uploadPin = AtomicReference<String?>("unset")
+        val syncPullPin = AtomicReference<String?>("unset")
+        server = startServer(
+            port = port,
+            tempFilePath = tempDir,
+            getFileFromName = { ByteArray(0) },
+            onFileUploaded = { _, _, pin -> uploadPin.set(pin) },
+            syncPullHandlers = mapOf("passwords" to { _, pin -> syncPullPin.set(pin); "data".toByteArray() }),
+            serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
+        ).also { it.start(wait = false) }
+        awaitListening(port)
+        val bobTls = K2kClientTls(bob, password, alias, serverPins = setOf(alicePin))
+
+        uploadFile(
+            file = "payload".toByteArray(),
+            fileName = "blob",
+            ipAddress = "127.0.0.1",
+            port = port,
+            tls = bobTls,
+        )
+        requestSyncPull("passwords", "client-key".toByteArray(), "127.0.0.1", port, tls = bobTls)
+
+        kotlin.test.assertEquals(bobPin, uploadPin.get())
+        kotlin.test.assertEquals(bobPin, syncPullPin.get())
     }
 }

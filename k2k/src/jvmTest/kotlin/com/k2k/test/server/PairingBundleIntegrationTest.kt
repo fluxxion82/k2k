@@ -41,7 +41,7 @@ class PairingBundleIntegrationTest {
             getFileFromName = { fileName ->
                 if (fileName == "publicKey") "legacy-rsa-public-key".encodeToByteArray() else ByteArray(0)
             },
-            onFileUploaded = { _, _ -> error("pairing listener must not accept upload") },
+            onFileUploaded = { _, _, _ -> error("pairing listener must not accept upload") },
             pairingBundleExchange = PairingBundleExchange(
                 localBundle = { localBundle },
                 validatePeerBundle = { candidate ->
