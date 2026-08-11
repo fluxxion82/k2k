@@ -9,10 +9,15 @@ import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.http.*
+import io.ktor.utils.io.*
 import com.k2k.test.tls.K2kClientTls
 import com.k2k.test.tls.buildSslContext
 import okhttp3.ConnectionSpec
 import okhttp3.TlsVersion
+import java.io.ByteArrayOutputStream
+
+/** The pairing endpoint is intentionally smaller than the data-server request cap. */
+const val MAX_PAIRING_BUNDLE_BYTES = 16 * 1024
 
 private fun httpScheme(tls: K2kClientTls?): String = if (tls != null) "https" else "http"
 
@@ -107,6 +112,60 @@ suspend fun downloadFile(
     } finally {
         client.close()
     }
+}
+
+/** Fetch the bounded public identity bundle from the plaintext pairing listener. */
+suspend fun downloadPairingBundle(
+    ipAddress: String,
+    port: Int,
+): ByteArray? {
+    val client = k2kHttpClient(tls = null)
+    val url = "http://$ipAddress:$port/pairing-bundle"
+    return try {
+        val response = client.get(url)
+        if (response.status != HttpStatusCode.OK) return null
+        response.readBoundedPairingBundle()
+    } finally {
+        client.close()
+    }
+}
+
+/** Push the local public identity bundle to the peer during the same pairing ceremony. */
+suspend fun uploadPairingBundle(
+    bundle: ByteArray,
+    ipAddress: String,
+    port: Int,
+) {
+    require(bundle.size <= MAX_PAIRING_BUNDLE_BYTES) { "pairing bundle too large" }
+    val client = k2kHttpClient(tls = null)
+    val url = "http://$ipAddress:$port/pairing-bundle"
+    try {
+        val response = client.post(url) { setBody(bundle) }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("pairing bundle exchange failed: ${response.status}")
+        }
+    } finally {
+        client.close()
+    }
+}
+
+private suspend fun HttpResponse.readBoundedPairingBundle(): ByteArray {
+    val declaredLength = contentLength()
+    if (declaredLength != null && declaredLength > MAX_PAIRING_BUNDLE_BYTES) {
+        throw IllegalStateException("pairing bundle too large")
+    }
+    val out = ByteArrayOutputStream(minOf(MAX_PAIRING_BUNDLE_BYTES, 4 * 1024))
+    val buffer = ByteArray(4 * 1024)
+    val channel = bodyAsChannel()
+    var total = 0
+    while (true) {
+        val count = channel.readAvailable(buffer, 0, buffer.size)
+        if (count == -1) break
+        total += count
+        if (total > MAX_PAIRING_BUNDLE_BYTES) throw IllegalStateException("pairing bundle too large")
+        out.write(buffer, 0, count)
+    }
+    return out.toByteArray()
 }
 
 suspend fun requestSyncPull(

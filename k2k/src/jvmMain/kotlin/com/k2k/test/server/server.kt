@@ -18,8 +18,31 @@ import io.netty.handler.ssl.SslContext
 import io.netty.handler.ssl.SslHandler
 import java.security.cert.X509Certificate
 import kotlinx.coroutines.flow.asFlow
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * The sole non-legacy operation exposed by the plaintext pairing listener.
+ *
+ * This is deliberately a separate [startServer] mode rather than another set of routes layered on
+ * the data server. When non-null, the data/upload/sync routes are not registered at all.
+ */
+data class PairingBundleExchange(
+    val localBundle: suspend () -> ByteArray,
+    val validatePeerBundle: (ByteArray) -> Boolean,
+    val onPeerBundle: suspend (ByteArray) -> Unit,
+    val maxBundleBytes: Int = 16 * 1024,
+    val maxRequestsPerWindow: Int = 8,
+    val rateLimitWindowMillis: Long = 60_000,
+) {
+    init {
+        require(maxBundleBytes in 1 until 64 * 1024) { "pairing bundle cap must be below 64 KiB" }
+        require(maxRequestsPerWindow > 0) { "pairing rate limit must allow at least one request" }
+        require(rateLimitWindowMillis > 0) { "pairing rate-limit window must be positive" }
+    }
+}
 
 fun startServer(
     port: Int,
@@ -43,6 +66,10 @@ fun startServer(
     // Optional diagnostics hook. It is invoked from download handling with the protocol negotiated
     // by the connecting peer, allowing integration tests to observe the actual client handshake.
     onPeerTlsProtocol: ((String?) -> Unit)? = null,
+    // A non-null exchange creates the intentionally tiny plaintext pairing route table: the legacy
+    // RSA public-key download plus the bounded mutual pairing-bundle exchange. It never registers
+    // upload, artifact, sync-pull, or arbitrary download routes.
+    pairingBundleExchange: PairingBundleExchange? = null,
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     // Built once and shared; a fresh SslHandler is created per channel below. When null the
     // server stays plaintext (legacy behaviour); when set, every connection is mutually
@@ -62,6 +89,11 @@ fun startServer(
     ) {
         install(ContentNegotiation)
         routing {
+            if (pairingBundleExchange != null) {
+                installPairingRoutes(getFileFromName, pairingBundleExchange)
+                return@routing
+            }
+
             post("/upload") {
                 if (!authorizeOp("passwords", authorizer)) return@post
                 handleUpload(tempFilePath, onFileUploaded, maxUploadBytes)
@@ -120,6 +152,117 @@ fun startServer(
                 }
             }
         }
+    }
+}
+
+private fun Route.installPairingRoutes(
+    getFileFromName: suspend (String) -> ByteArray,
+    exchange: PairingBundleExchange,
+) {
+    val peerBundleAccepted = AtomicBoolean(false)
+    val rateLimiter = PairingRateLimiter(exchange.maxRequestsPerWindow, exchange.rateLimitWindowMillis)
+
+    // Retain the old bootstrap endpoint for peers that have not yet learned the identity bundle.
+    get("/download/publicKey") {
+        handleDownload("publicKey", getFileFromName)
+    }
+
+    get("/pairing-bundle") {
+        if (!rateLimiter.tryAcquire()) {
+            call.respond(HttpStatusCode.TooManyRequests, "pairing exchange rate limited")
+            return@get
+        }
+        val localBundle = try {
+            exchange.localBundle()
+        } catch (_: Throwable) {
+            call.respond(HttpStatusCode.InternalServerError, "pairing bundle unavailable")
+            return@get
+        }
+        if (localBundle.size > exchange.maxBundleBytes) {
+            call.respond(HttpStatusCode.InternalServerError, "pairing bundle unavailable")
+            return@get
+        }
+        call.respondBytes(localBundle)
+    }
+
+    post("/pairing-bundle") {
+        if (!rateLimiter.tryAcquire()) {
+            call.respond(HttpStatusCode.TooManyRequests, "pairing exchange rate limited")
+            return@post
+        }
+        val declaredLength = call.request.contentLength()
+        if (declaredLength != null && declaredLength > exchange.maxBundleBytes) {
+            call.respond(HttpStatusCode.PayloadTooLarge, "pairing bundle too large")
+            return@post
+        }
+        val peerBundle = try {
+            readBoundedPairingBody(exchange.maxBundleBytes)
+        } catch (_: PairingBundleTooLargeException) {
+            call.respond(HttpStatusCode.PayloadTooLarge, "pairing bundle too large")
+            return@post
+        } catch (_: Throwable) {
+            call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
+            return@post
+        }
+        val valid = try {
+            exchange.validatePeerBundle(peerBundle)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!valid) {
+            call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
+            return@post
+        }
+        if (!peerBundleAccepted.compareAndSet(false, true)) {
+            call.respond(HttpStatusCode.Conflict, "pairing bundle already received")
+            return@post
+        }
+        try {
+            exchange.onPeerBundle(peerBundle)
+            call.respond(HttpStatusCode.OK, "pairing bundle received")
+        } catch (_: Throwable) {
+            // The peer has not been accepted when local delivery failed; permit a retry while the
+            // listener is still open, but never leak the local failure in the network response.
+            peerBundleAccepted.set(false)
+            call.respond(HttpStatusCode.InternalServerError, "pairing exchange failed")
+        }
+    }
+}
+
+private class PairingBundleTooLargeException : Exception()
+
+private suspend fun io.ktor.server.routing.RoutingContext.readBoundedPairingBody(maxBytes: Int): ByteArray {
+    val out = ByteArrayOutputStream(minOf(maxBytes, 4 * 1024))
+    val buffer = ByteArray(minOf(maxBytes, 4 * 1024))
+    val channel = call.receiveChannel()
+    var total = 0
+    while (true) {
+        val count = channel.readAvailable(buffer, 0, buffer.size)
+        if (count == -1) break
+        total += count
+        if (total > maxBytes) throw PairingBundleTooLargeException()
+        out.write(buffer, 0, count)
+    }
+    return out.toByteArray()
+}
+
+/** A small process-local fixed-window limiter for the short-lived plaintext pairing listener. */
+private class PairingRateLimiter(
+    private val maxRequests: Int,
+    private val windowMillis: Long,
+) {
+    private var windowStartedAt = 0L
+    private var requestCount = 0
+
+    @Synchronized
+    fun tryAcquire(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (nowMillis - windowStartedAt >= windowMillis) {
+            windowStartedAt = nowMillis
+            requestCount = 0
+        }
+        if (requestCount >= maxRequests) return false
+        requestCount++
+        return true
     }
 }
 
