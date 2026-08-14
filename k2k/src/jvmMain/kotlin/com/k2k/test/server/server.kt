@@ -79,18 +79,7 @@ fun startServer(
     // server stays plaintext (legacy behaviour); when set, every connection is mutually
     // authenticated and the peer certificate is SPKI-pinned to a paired device.
     val sslContext: SslContext? = serverTls?.buildNettySslContext()
-    return embeddedServer(
-        Netty,
-        configure = {
-            // The configure-capable overload takes no `port`, so bind the connector here.
-            connector { this.port = port }
-            if (sslContext != null) {
-                channelPipelineConfig = { pipeline ->
-                    pipeline.addFirst("ssl", sslContext.newHandler(pipeline.channel().alloc()))
-                }
-            }
-        },
-    ) {
+    val routesModule: Application.() -> Unit = {
         install(ContentNegotiation)
         routing {
             if (pairingBundleExchange != null) {
@@ -157,6 +146,28 @@ fun startServer(
             }
         }
     }
+
+    return embeddedServer(
+        Netty,
+        serverConfig {
+            // Ktor's default watchPaths is the working directory. A non-empty list makes every
+            // stop() lazily create a WatchService purely to close it, and Android's
+            // LinuxWatchService finalizer then closes it a second time, logging an uncaught
+            // ClosedWatchServiceException per server stop. There is no auto-reload here: watch
+            // nothing.
+            watchPaths = emptyList()
+            module(body = routesModule)
+        },
+        configure = {
+            // This overload takes no `port`, so bind the connector here.
+            connector { this.port = port }
+            if (sslContext != null) {
+                channelPipelineConfig = { pipeline ->
+                    pipeline.addFirst("ssl", sslContext.newHandler(pipeline.channel().alloc()))
+                }
+            }
+        },
+    )
 }
 
 private fun Route.installPairingRoutes(
