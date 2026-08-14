@@ -6,7 +6,7 @@ Passman is a local-only password manager: there is no server component, and vaul
 
 **Please do not open a public issue for security reports.**
 
-Email **fluxxion@gmail.com** with a description of the issue, the affected component, and reproduction steps if you have them. You should receive an acknowledgement within a week. Please allow a reasonable window for a fix to ship before public disclosure.
+Email **sterling.albury@gmail.com** with a description of the issue, the affected component, and reproduction steps if you have them. You should receive an acknowledgement within a week. Please allow a reasonable window for a fix to ship before public disclosure.
 
 ## What to expect
 
