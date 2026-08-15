@@ -13,7 +13,6 @@ object ConnectionClient {
         port: Int,
     ) {
         runCatching {
-            println("client send, addy: ${host.hostAddress}, port: ${host.port}")
             val socketAddress = InetSocketAddress(host.hostAddress, port)
             val socket = aSocket(SelectorManager(Dispatchers.Default))
                 .tcp()
@@ -22,13 +21,9 @@ object ConnectionClient {
                     reuseAddress = true
                 }
 
-            println("client sent: $socket, ${bytes.size}")
             val writeChannel = socket.openWriteChannel(autoFlush = true)
             writeChannel.writeFully(bytes, 0, bytes.size)
-            println("client written")
         }.onFailure {
-            it.cause?.printStackTrace()
-            println("exception sending: ${it.message}")
         }
     }
 }

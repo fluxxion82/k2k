@@ -81,11 +81,8 @@ object DiscoveryServer {
                             keepHosts[host] = Clock.System.now().toEpochMilliseconds()
                         }
                     }
-                    println("discovery server, emit $keepHosts")
                     hosts.emit(keepHosts)
                 } catch (e: Throwable) {
-                    e.printStackTrace()
-                    println("error: ${e.message}")
                     serverSocket.close()
                 }
             }

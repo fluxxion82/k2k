@@ -57,27 +57,21 @@ actual class PlatformServer private constructor(
 //                        tempFile?.let { onFileUploaded(it.readBytes(), it.name) }
 
                         try {
-                            println("Upload endpoint hit")
                             val byteArray = call.receive<ByteArray>()
 
-                            println("Received ${byteArray.size} bytes")
                             onFileUploaded(byteArray)
 
                             call.respond(HttpStatusCode.OK, "Data received successfully")
                         } catch (e: Exception) {
-                            println("Upload error: ${e.message}")
-                            e.printStackTrace()
                             call.respond(HttpStatusCode.InternalServerError, "Upload failed: ${e.message}")
                         }
                     }
 
                     get("/download/{fileName}") {
-                        println("download file")
                         val fileName = call.parameters["fileName"]!!
 
                         val fileBytes = getFileFromName(fileName)
                         if (fileBytes.isNotEmpty()) {
-                            println("file bytes exist")
                             call.respondBytes(fileBytes)
                         } else {
                             call.respondText("File not found", status = HttpStatusCode.NotFound)

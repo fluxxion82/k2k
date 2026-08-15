@@ -19,10 +19,7 @@ suspend fun uploadFile(file: ByteArray, ipAddress: String, port: Int) {
             contentType(ContentType.Application.OctetStream)
         }
 
-        println("Upload completed. Status: ${response.status}")
-        println("Response body: ${response.bodyAsText()}")
     } catch (e: Exception) {
-        println("Upload failed: ${e.message}")
         throw e
     } finally {
         client.close()
@@ -35,14 +32,11 @@ suspend fun downloadFile(fileName: String, ipAddress: String, port: Int): ByteAr
             json()
         }
     }
-    println("download file from client")
     val response = client.get("http://$ipAddress:$port/download/$fileName")
-    println("download file from client with response: $response")
     return if (response.status == HttpStatusCode.OK) {
         val bytes = response.readRawBytes()
         bytes
     } else {
-        println("Error: ${response.status.description}")
         null
     }.also { client.close() }
 }

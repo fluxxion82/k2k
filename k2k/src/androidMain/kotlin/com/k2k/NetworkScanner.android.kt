@@ -19,7 +19,6 @@ actual class NetworkScanner(
 
         // Get device's IP address
         val localIp = formatIp(dhcpInfo.ipAddress)
-        println("localIp: $localIp")
 
         // Scan subnet
         val subnet = localIp.substring(0, localIp.lastIndexOf('.') + 1)
@@ -34,7 +33,6 @@ actual class NetworkScanner(
     }
 
     actual suspend fun isAppRunning(ip: String): Boolean {
-        println("isAppRunning: $ip")
 
         val socket = PlatformSocket()
         return try {

@@ -22,10 +22,8 @@ class Connection private constructor(
 ) {
     val receiveData: Flow<Pair<Host, ByteArray>> = channelFlow {
         ConnectionServer.receiveData.collectLatest {
-            println("receive data connection, ${it?.first}, ${it?.second?.decodeToString()}")
             if (it != null) {
                 val peer = peers.value.firstOrNull { aPeer ->
-                    println("apeer host address: ${aPeer.hostAddress}")
                     aPeer.hostAddress == it.first.substringBefore(":").substringAfter("/")
                 }
                 peer?.let { p -> send(Pair(p, it.second)) }

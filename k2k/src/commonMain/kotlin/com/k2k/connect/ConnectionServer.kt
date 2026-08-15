@@ -19,7 +19,6 @@ object ConnectionServer {
     private val socket = aSocket(SelectorManager(Dispatchers.Default)).tcp()
 
     fun startServer(port: Int, scope: CoroutineScope) {
-        println("connection server, start $port")
         receiveJob.cancel()
         receiveJob = scope.launch(Dispatchers.Default) {
             while (true) {
@@ -32,13 +31,11 @@ object ConnectionServer {
                     .accept()
                     .use { boundSocket ->
                         runCatching {
-                            println("bound socket")
 
                             val readChannel = boundSocket.openReadChannel()
                             val output = boundSocket.openWriteChannel(autoFlush = true)
                             val toRead = readChannel.availableForRead
                             val buffer = ByteArray(toRead)
-                            println("available to read: $toRead")
                             while (true) {
                                 val bytesRead = readChannel.readAvailable(buffer)
                                 if (bytesRead <= 0) {
@@ -48,7 +45,6 @@ object ConnectionServer {
                                 receiveData.emit(boundSocket.remoteAddress.toString() to buffer)
                             }
                         }.onFailure {
-                            println("failure opening read channel and reading, ${it.message}")
                             boundSocket.close()
                         }
                     }

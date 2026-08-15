@@ -133,7 +133,6 @@ fun startServer(
                     } catch (t: Throwable) {
                         // Log the detail locally; the response body stays generic so internal
                         // paths/crypto errors never leak to the network.
-                        println("sync-pull '$kind' failed: ${t.message}")
                         call.respond(HttpStatusCode.InternalServerError, "sync-pull failed")
                         return@post
                     }
@@ -324,7 +323,6 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     onFileUploaded: suspend (ByteArray, String, String?) -> Unit,
     maxUploadBytes: Long,
 ) {
-    println("upload file")
     // Reject early on a declared oversize body so a flood never gets to stream to disk.
     val declaredLength = call.request.contentLength()
     if (declaredLength != null && declaredLength > maxUploadBytes) {
@@ -388,7 +386,6 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
         if (partProcessingFailure != null) tempFile?.delete()
     }
     partProcessingFailure?.let { throw it }
-    println("upload complete")
 
     val uploaded = tempFile
     if (tooLarge) {
@@ -402,7 +399,6 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
             onFileUploaded(uploaded.readBytes(), uploadName ?: uploaded.name, peerSpkiPin())
             call.respondText("200")
         } catch (t: Throwable) {
-            println("upload processing failed: ${t.message}")
             call.respond(HttpStatusCode.InternalServerError, "upload processing failed")
         } finally {
             uploaded.delete()
@@ -414,10 +410,8 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleDownload(
     fileName: String,
     getFileFromName: suspend (String) -> ByteArray,
 ) {
-    println("download file")
     val fileBytes = getFileFromName(fileName)
     if (fileBytes.isNotEmpty()) {
-        println("file bytes exist")
         call.respondBytes(fileBytes)
     } else {
         call.respondText("File not found", status = HttpStatusCode.NotFound)

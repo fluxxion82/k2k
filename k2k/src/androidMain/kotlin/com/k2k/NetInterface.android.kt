@@ -22,7 +22,6 @@ actual object NetInterface {
                 }
             } catch (ignored: Exception) {
                 // cannot access inetAddresses
-                println("error accessing inetAddresses")
             }
         }
 

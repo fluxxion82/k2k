@@ -60,7 +60,6 @@ suspend fun uploadFile(
     val scheme = httpScheme(tls)
 
     try {
-        println("k2k.uploadFile to $scheme://$ipAddress:$port$path (file=$fileName, ${file.size} bytes)")
         val response = client.submitFormWithBinaryData(
             url = "$scheme://$ipAddress:$port$path",
             formData = formData {
@@ -70,7 +69,6 @@ suspend fun uploadFile(
             }
         ) {
             onUpload { bytesSentTotal, contentLength ->
-                println("k2k.uploadFile $ipAddress:$port: $bytesSentTotal/$contentLength bytes")
             }
         }
         if (!response.status.isSuccess()) {
@@ -78,9 +76,7 @@ suspend fun uploadFile(
                 "k2k.uploadFile $ipAddress:$port$path failed: ${response.status} ${response.bodyAsText()}",
             )
         }
-        println("k2k.uploadFile $ipAddress:$port$path response: ${response.bodyAsText()}")
     } catch (t: Throwable) {
-        println("k2k.uploadFile $ipAddress:$port$path threw: ${t::class.simpleName}: ${t.message}")
         throw t
     } finally {
         client.close()
@@ -96,18 +92,14 @@ suspend fun downloadFile(
 ): ByteArray? {
     val client = k2kHttpClient(tls)
     val url = "${httpScheme(tls)}://$ipAddress:$port$basePath/$fileName"
-    println("k2k.downloadFile GET $url")
     return try {
         val response = client.get(url)
-        println("k2k.downloadFile $url response: ${response.status}")
         if (response.status == HttpStatusCode.OK) {
             response.readBytes()
         } else {
-            println("k2k.downloadFile $url non-200: ${response.status.description}")
             null
         }
     } catch (t: Throwable) {
-        println("k2k.downloadFile $url threw: ${t::class.simpleName}: ${t.message}")
         throw t
     } finally {
         client.close()
@@ -177,12 +169,10 @@ suspend fun requestSyncPull(
 ): ByteArray? {
     val client = k2kHttpClient(tls)
     val url = "${httpScheme(tls)}://$ipAddress:$port/sync-pull/$kind"
-    println("k2k.requestSyncPull POST $url (${clientPublicKey.size} pubkey bytes)")
     return try {
         val response = client.post(url) {
             setBody(clientPublicKey)
         }
-        println("k2k.requestSyncPull $url response: ${response.status}")
         when {
             response.status.isSuccess() && response.status.value != HttpStatusCode.NoContent.value ->
                 response.readBytes()
@@ -192,7 +182,6 @@ suspend fun requestSyncPull(
             )
         }
     } catch (t: Throwable) {
-        println("k2k.requestSyncPull $url threw: ${t::class.simpleName}: ${t.message}")
         throw t
     } finally {
         client.close()

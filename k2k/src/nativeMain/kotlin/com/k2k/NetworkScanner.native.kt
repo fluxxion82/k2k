@@ -70,7 +70,6 @@ actual class NetworkScanner {
             null
         }
 
-        println("localIp: $localIp")
         // If local IP is null, return an empty list
         if (localIp == null) return@withContext emptyList<String>()
 
@@ -89,7 +88,6 @@ actual class NetworkScanner {
     }
 
     actual suspend fun isAppRunning(ip: String): Boolean = withContext(Dispatchers.Default) {
-        println("isAppRunning: $ip")
         try {
             val sockfd = socket(AF_INET, SOCK_STREAM, 0)
             if (sockfd < 0) return@withContext false

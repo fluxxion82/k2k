@@ -57,7 +57,6 @@ object DiscoveryClient {
 //            output.close()
 //            socketConnection.close()
         }.onFailure {
-            println("failed to write socket: ${it.message}")
         }
 
         writeToSocket(BROADCAST_ADDRESS, port)
