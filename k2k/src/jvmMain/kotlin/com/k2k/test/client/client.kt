@@ -10,6 +10,7 @@ import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.http.*
 import io.ktor.utils.io.*
+import com.k2k.test.server.PAIRING_PROOF_HEADER
 import com.k2k.test.tls.K2kClientTls
 import com.k2k.test.tls.buildSslContext
 import okhttp3.ConnectionSpec
@@ -122,17 +123,26 @@ suspend fun downloadPairingBundle(
     }
 }
 
-/** Push the local public identity bundle to the peer during the same pairing ceremony. */
+/**
+ * Push the local public identity bundle to the peer during the same pairing ceremony.
+ *
+ * [pairingProof] rides along in [PAIRING_PROOF_HEADER] when the ceremony started from a scanned
+ * pairing QR; leaving it null keeps the request identical to the pre-QR protocol.
+ */
 suspend fun uploadPairingBundle(
     bundle: ByteArray,
     ipAddress: String,
     port: Int,
+    pairingProof: String? = null,
 ) {
     require(bundle.size <= MAX_PAIRING_BUNDLE_BYTES) { "pairing bundle too large" }
     val client = k2kHttpClient(tls = null)
     val url = "http://$ipAddress:$port/pairing-bundle"
     try {
-        val response = client.post(url) { setBody(bundle) }
+        val response = client.post(url) {
+            pairingProof?.let { header(PAIRING_PROOF_HEADER, it) }
+            setBody(bundle)
+        }
         if (!response.status.isSuccess()) {
             throw IllegalStateException("pairing bundle exchange failed: ${response.status}")
         }

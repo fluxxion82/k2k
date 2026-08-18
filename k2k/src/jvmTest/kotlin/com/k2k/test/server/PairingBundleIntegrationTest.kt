@@ -3,6 +3,7 @@ package com.k2k.test.server
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.*
@@ -10,14 +11,22 @@ import io.ktor.http.HttpStatusCode
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 class PairingBundleIntegrationTest {
     private val localBundle = ByteArray(3_312) { 0x41 }
@@ -28,8 +37,25 @@ class PairingBundleIntegrationTest {
     private lateinit var tempDir: String
     private var server: io.ktor.server.engine.EmbeddedServer<*, *>? = null
     private val client = HttpClient(CIO)
+
+    @Volatile
     private var receivedPeerBundle: ByteArray? = null
     private var validationCalls = 0
+
+    @Volatile
+    private var receivedProof: String? = null
+
+    @Volatile
+    private var receivedRemoteHost: String? = null
+    private val callbackInvocations = AtomicInteger(0)
+
+    /** What the application answers: true = "this was my one pairing exchange", false = ignored. */
+    @Volatile
+    private var acceptPeerBundle = true
+
+    /** Optional hook run inside the callback, used to hold two pushes inside it at once. */
+    @Volatile
+    private var onPeerBundleGate: (suspend () -> Unit)? = null
 
     @BeforeTest
     fun setUp() {
@@ -48,7 +74,14 @@ class PairingBundleIntegrationTest {
                     validationCalls++
                     candidate.contentEquals(peerBundle) || candidate.contentEquals(secondPeerBundle)
                 },
-                onPeerBundle = { receivedPeerBundle = it.copyOf() },
+                onPeerBundle = { bundle, proof, remoteHost ->
+                    callbackInvocations.incrementAndGet()
+                    receivedPeerBundle = bundle.copyOf()
+                    receivedProof = proof
+                    receivedRemoteHost = remoteHost
+                    onPeerBundleGate?.invoke()
+                    acceptPeerBundle
+                },
             ),
         ).also { it.start(wait = false) }
         awaitListening()
@@ -78,6 +111,130 @@ class PairingBundleIntegrationTest {
         }
         assertEquals(HttpStatusCode.Conflict, secondPush.status)
         assertContentEquals(peerBundle, receivedPeerBundle)
+        // The burnt slot short-circuits before the application is bothered a second time.
+        assertEquals(1, callbackInvocations.get())
+    }
+
+    @Test
+    fun pairingBundle_passesProofHeaderAndRemoteHostToTheApplication() = runBlocking {
+        val proof = "aGVsbG8tcGFpcmluZy1wcm9vZg"
+
+        val pushed = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            header(PAIRING_PROOF_HEADER, proof)
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.OK, pushed.status)
+        assertEquals(1, callbackInvocations.get())
+        assertEquals(proof, receivedProof)
+        assertTrue(assertNotNull(receivedRemoteHost).isNotBlank())
+    }
+
+    @Test
+    fun pairingBundle_passesNullProofWhenTheHeaderIsAbsent() = runBlocking {
+        val pushed = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.OK, pushed.status)
+        assertEquals(1, callbackInvocations.get())
+        assertNull(receivedProof)
+    }
+
+    @Test
+    fun pairingBundle_rejectsOversizedProofHeaderWithoutInvokingTheApplication() = runBlocking {
+        val oversized = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            header(PAIRING_PROOF_HEADER, "A".repeat(129))
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, oversized.status)
+        assertEquals(0, callbackInvocations.get())
+        assertNull(receivedPeerBundle)
+
+        // The cap itself is inclusive: a proof of exactly the maximum length still gets through.
+        val atCap = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            header(PAIRING_PROOF_HEADER, "A".repeat(128))
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.OK, atCap.status)
+        assertEquals(1, callbackInvocations.get())
+        assertEquals("A".repeat(128), receivedProof)
+    }
+
+    @Test
+    fun pairingBundle_ignoredPushLeavesTheSlotOpenForAnHonestRetry() = runBlocking {
+        acceptPeerBundle = false
+
+        val ignored = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.OK, ignored.status)
+        // Indistinguishable from an accepted push: a prober learns nothing about the listener.
+        assertEquals("pairing bundle received", ignored.bodyAsText())
+        assertEquals(1, callbackInvocations.get())
+
+        val retry = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            setBody(secondPeerBundle)
+        }
+
+        assertEquals(HttpStatusCode.OK, retry.status)
+        assertEquals(2, callbackInvocations.get())
+        assertContentEquals(secondPeerBundle, receivedPeerBundle)
+    }
+
+    @Test
+    fun pairingBundle_acceptedPushBurnsTheSlotWithTheSameResponseBodyAsAnIgnoredOne() = runBlocking {
+        val accepted = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.OK, accepted.status)
+        assertEquals("pairing bundle received", accepted.bodyAsText())
+
+        val afterBurn = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            setBody(secondPeerBundle)
+        }
+
+        assertEquals(HttpStatusCode.Conflict, afterBurn.status)
+        assertEquals(1, callbackInvocations.get())
+    }
+
+    @Test
+    fun pairingBundle_concurrentAcceptedPushesBurnTheSlotExactlyOnce() = runBlocking {
+        val firstInside = CompletableDeferred<Unit>()
+        val secondInside = CompletableDeferred<Unit>()
+        // Hold the first push inside the application until the second one has entered too, so both
+        // observe a free slot and genuinely race on the compare-and-set that follows.
+        onPeerBundleGate = {
+            if (firstInside.complete(Unit)) {
+                withTimeoutOrNull(10_000) { secondInside.await() }
+            } else {
+                secondInside.complete(Unit)
+            }
+        }
+
+        val statuses = listOf(peerBundle, secondPeerBundle)
+            .map { body ->
+                async(Dispatchers.IO) {
+                    client.post("http://127.0.0.1:$port/pairing-bundle") { setBody(body) }.status
+                }
+            }
+            .awaitAll()
+
+        assertTrue(firstInside.isCompleted && secondInside.isCompleted, "both pushes must overlap")
+        assertEquals(2, callbackInvocations.get())
+        assertEquals(setOf(HttpStatusCode.OK, HttpStatusCode.Conflict), statuses.toSet())
+
+        onPeerBundleGate = null
+        val afterBurn = client.post("http://127.0.0.1:$port/pairing-bundle") {
+            setBody(peerBundle)
+        }
+
+        assertEquals(HttpStatusCode.Conflict, afterBurn.status)
+        assertEquals(2, callbackInvocations.get())
     }
 
     @Test

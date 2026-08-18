@@ -14,6 +14,7 @@ import com.k2k.test.tls.K2kServerTls
 import com.k2k.test.tls.SpkiPinning
 import com.k2k.test.tls.buildNettySslContext
 import io.ktor.server.netty.NettyApplicationCall
+import io.ktor.server.plugins.origin
 import io.netty.handler.ssl.SslContext
 import io.netty.handler.ssl.SslHandler
 import java.security.cert.X509Certificate
@@ -32,7 +33,17 @@ import java.util.concurrent.atomic.AtomicBoolean
 data class PairingBundleExchange(
     val localBundle: suspend () -> ByteArray,
     val validatePeerBundle: (ByteArray) -> Boolean,
-    val onPeerBundle: suspend (ByteArray) -> Unit,
+    /**
+     * Receives the raw peer bundle, the [PAIRING_PROOF_HEADER] value (null when the peer sent none)
+     * and the caller's remote host.
+     *
+     * Return true when the application accepted this bundle as the listener lifecycle's ONE pairing
+     * exchange — only then does the route burn its single-accept slot. Returning false leaves the
+     * slot free, so a push the application ignored (an unverifiable QR possession proof, a probe
+     * from any host on the LAN) cannot deny the honest peer its retry. The network response is the
+     * same either way; the boolean never reaches the wire.
+     */
+    val onPeerBundle: suspend (bundle: ByteArray, proof: String?, remoteHost: String) -> Boolean,
     val maxBundleBytes: Int = 16 * 1024,
     val maxRequestsPerWindow: Int = 8,
     val rateLimitWindowMillis: Long = 60_000,
@@ -43,6 +54,15 @@ data class PairingBundleExchange(
         require(rateLimitWindowMillis > 0) { "pairing rate-limit window must be positive" }
     }
 }
+
+/** Carries the pusher's proof that it saw the peer's pairing QR. Optional: absent on manual pairing. */
+const val PAIRING_PROOF_HEADER = "X-Passman-Pairing-Proof"
+
+/**
+ * Bound on the proof header before it reaches the application. It is attacker-supplied plaintext
+ * input and an honest proof is a base64url SHA-256 (43 chars), so anything longer is junk.
+ */
+private const val MAX_PAIRING_PROOF_CHARS = 128
 
 fun startServer(
     port: Int,
@@ -227,19 +247,33 @@ private fun Route.installPairingRoutes(
             call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
             return@post
         }
-        if (!peerBundleAccepted.compareAndSet(false, true)) {
+        val proof = call.request.headers[PAIRING_PROOF_HEADER]
+        if (proof != null && proof.length > MAX_PAIRING_PROOF_CHARS) {
+            call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
+            return@post
+        }
+        if (peerBundleAccepted.get()) {
             call.respond(HttpStatusCode.Conflict, "pairing bundle already received")
             return@post
         }
-        try {
-            exchange.onPeerBundle(peerBundle)
-            call.respond(HttpStatusCode.OK, "pairing bundle received")
+        val accepted = try {
+            exchange.onPeerBundle(peerBundle, proof, call.request.origin.remoteHost)
         } catch (_: Throwable) {
-            // The peer has not been accepted when local delivery failed; permit a retry while the
-            // listener is still open, but never leak the local failure in the network response.
-            peerBundleAccepted.set(false)
+            // The peer has not been accepted when local delivery failed; the slot is untouched so a
+            // retry can still land while the listener is open, and the response never leaks the
+            // local failure to the network.
             call.respond(HttpStatusCode.InternalServerError, "pairing exchange failed")
+            return@post
         }
+        // The slot burns only on an accepted bundle, and only for the request that wins the race: a
+        // concurrent push that slipped past the check above must not also count as "the" exchange.
+        if (accepted && !peerBundleAccepted.compareAndSet(false, true)) {
+            call.respond(HttpStatusCode.Conflict, "pairing bundle already received")
+            return@post
+        }
+        // Identical response for an accepted and an ignored bundle: a prober on the plaintext port
+        // learns nothing about what this listener is armed for.
+        call.respond(HttpStatusCode.OK, "pairing bundle received")
     }
 }
 
