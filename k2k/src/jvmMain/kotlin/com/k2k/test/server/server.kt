@@ -18,6 +18,7 @@ import io.ktor.server.plugins.origin
 import io.netty.handler.ssl.SslContext
 import io.netty.handler.ssl.SslHandler
 import java.security.cert.X509Certificate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.asFlow
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -35,15 +36,26 @@ data class PairingBundleExchange(
     val validatePeerBundle: (ByteArray) -> Boolean,
     /**
      * Receives the raw peer bundle, the [PAIRING_PROOF_HEADER] value (null when the peer sent none)
-     * and the caller's remote host.
+     * and the caller's literal IP address, no DNS. The address is read straight off the socket, so
+     * it is never a name an attacker could plant in reverse DNS or mDNS and never a value forged in
+     * an X-Forwarded-For header — it is safe to show the user as "who is pairing with you".
      *
      * Return true when the application accepted this bundle as the listener lifecycle's ONE pairing
      * exchange — only then does the route burn its single-accept slot. Returning false leaves the
      * slot free, so a push the application ignored (an unverifiable QR possession proof, a probe
      * from any host on the LAN) cannot deny the honest peer its retry. The network response is the
      * same either way; the boolean never reaches the wire.
+     *
+     * Contract for implementations:
+     * - It may be invoked concurrently: two pushes can be inside it at once, and the route only
+     *   arbitrates which of them burns the slot afterwards.
+     * - It must not throw for attacker-controllable input — return false instead. A throw is treated
+     *   as a local delivery failure and answered 500, which is distinguishable from the uniform 200
+     *   an accepted and an ignored push both get, so a prober could use it as an oracle.
+     * - Enforcing "only one peer is ever accepted" is the application's job (an atomic consume of
+     *   the pairing nonce, say). The route's single-accept slot is a backstop, not the mechanism.
      */
-    val onPeerBundle: suspend (bundle: ByteArray, proof: String?, remoteHost: String) -> Boolean,
+    val onPeerBundle: suspend (bundle: ByteArray, proof: String?, remoteAddress: String) -> Boolean,
     val maxBundleBytes: Int = 16 * 1024,
     val maxRequestsPerWindow: Int = 8,
     val rateLimitWindowMillis: Long = 60_000,
@@ -61,8 +73,10 @@ const val PAIRING_PROOF_HEADER = "X-Passman-Pairing-Proof"
 /**
  * Bound on the proof header before it reaches the application. It is attacker-supplied plaintext
  * input and an honest proof is a base64url SHA-256 (43 chars), so anything longer is junk.
+ *
+ * Public so the pushing side can refuse to send what this side would only reject.
  */
-private const val MAX_PAIRING_PROOF_CHARS = 128
+const val MAX_PAIRING_PROOF_CHARS = 128
 
 fun startServer(
     port: Int,
@@ -229,6 +243,21 @@ private fun Route.installPairingRoutes(
             call.respond(HttpStatusCode.PayloadTooLarge, "pairing bundle too large")
             return@post
         }
+        // Header hygiene before the body is read at all: both checks are free, and a push that fails
+        // either of them is junk whatever its body says. The rejection is the same generic 400 the
+        // body checks give, so moving them earlier only saves work — it tells the wire nothing new.
+        val proofHeaders = call.request.headers.getAll(PAIRING_PROOF_HEADER)
+        if (proofHeaders != null && proofHeaders.size > 1) {
+            // Which of two proofs the application would have checked is a decision nobody should be
+            // able to smuggle past it; an honest pusher sends exactly one.
+            call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
+            return@post
+        }
+        val proof = proofHeaders?.firstOrNull()
+        if (proof != null && proof.length > MAX_PAIRING_PROOF_CHARS) {
+            call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
+            return@post
+        }
         val peerBundle = try {
             readBoundedPairingBody(exchange.maxBundleBytes)
         } catch (_: PairingBundleTooLargeException) {
@@ -247,17 +276,19 @@ private fun Route.installPairingRoutes(
             call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
             return@post
         }
-        val proof = call.request.headers[PAIRING_PROOF_HEADER]
-        if (proof != null && proof.length > MAX_PAIRING_PROOF_CHARS) {
-            call.respond(HttpStatusCode.BadRequest, "invalid pairing bundle")
-            return@post
-        }
         if (peerBundleAccepted.get()) {
             call.respond(HttpStatusCode.Conflict, "pairing bundle already received")
             return@post
         }
         val accepted = try {
-            exchange.onPeerBundle(peerBundle, proof, call.request.origin.remoteHost)
+            // remoteAddress, not remoteHost: the latter is Netty's hostName, a blocking reverse-DNS
+            // lookup whose answer the caller can influence via PTR or mDNS records, and this string
+            // is shown to the user as the device asking to pair. Take the literal off the socket.
+            exchange.onPeerBundle(peerBundle, proof, call.request.origin.remoteAddress)
+        } catch (cancellation: CancellationException) {
+            // A cancelled call is the server tearing this request down, not an application failure:
+            // let it unwind instead of swallowing it into a 500 on a connection that is already gone.
+            throw cancellation
         } catch (_: Throwable) {
             // The peer has not been accepted when local delivery failed; the slot is untouched so a
             // retry can still land while the listener is open, and the response never leaks the

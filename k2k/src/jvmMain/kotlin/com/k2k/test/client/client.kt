@@ -10,6 +10,7 @@ import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.http.*
 import io.ktor.utils.io.*
+import com.k2k.test.server.MAX_PAIRING_PROOF_CHARS
 import com.k2k.test.server.PAIRING_PROOF_HEADER
 import com.k2k.test.tls.K2kClientTls
 import com.k2k.test.tls.buildSslContext
@@ -136,6 +137,11 @@ suspend fun uploadPairingBundle(
     pairingProof: String? = null,
 ) {
     require(bundle.size <= MAX_PAIRING_BUNDLE_BYTES) { "pairing bundle too large" }
+    // Mirror the listener's cap so a caller that built a malformed proof fails here, where the
+    // message can say so, rather than as an opaque 400 from a peer on the other side of the LAN.
+    require(pairingProof == null || pairingProof.length <= MAX_PAIRING_PROOF_CHARS) {
+        "pairing proof too large"
+    }
     val client = k2kHttpClient(tls = null)
     val url = "http://$ipAddress:$port/pairing-bundle"
     try {
