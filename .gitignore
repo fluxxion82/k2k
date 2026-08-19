@@ -66,3 +66,6 @@ Icon
 .externalNativeBuild
 
 .kotlin
+
+# Xcode per-user state
+xcuserdata/
