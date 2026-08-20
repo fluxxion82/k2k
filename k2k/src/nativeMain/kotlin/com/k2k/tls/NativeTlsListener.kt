@@ -1,7 +1,20 @@
 package com.k2k.tls
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.readBytes
+import platform.CoreFoundation.CFDataGetBytePtr
+import platform.CoreFoundation.CFDataGetLength
+import platform.Network.nw_connection_copy_protocol_metadata
+import platform.Network.nw_connection_set_queue
+import platform.Network.nw_connection_set_state_changed_handler
+import platform.Network.nw_connection_start
+import platform.Network.nw_connection_state_ready
 import platform.Network.nw_connection_t
+import platform.Network.nw_protocol_copy_tls_definition
+import platform.Network.nw_tls_copy_sec_protocol_metadata
+import platform.Security.SecCertificateCopyData
+import platform.Security.sec_certificate_copy_ref
+import platform.Security.sec_protocol_metadata_access_peer_certificate_chain
 import platform.Network.nw_listener_cancel
 import platform.Network.nw_listener_create_with_port
 import platform.Network.nw_listener_get_port
@@ -57,7 +70,16 @@ internal class NativeTlsListener(
      * never mean "allow all", or a device that has not finished pairing would accept the world.
      */
     private val allowedClientPins: Set<String>,
-    private val onConnection: (nw_connection_t) -> Unit,
+    /**
+     * Invoked once a connection is fully established AND attributed, with the verified SPKI pin of
+     * the peer that authenticated it.
+     *
+     * Deliberately not invoked at accept time. The TLS handshake has not completed then, so the
+     * peer's certificate chain does not yet exist and the pin would be null — an authenticated
+     * connection indistinguishable from an unauthenticated one. Waiting for ready is what makes the
+     * pin meaningful rather than merely present.
+     */
+    private val onConnection: (connection: nw_connection_t, peerPin: String?) -> Unit,
     private val onFailure: (String) -> Unit = {},
 ) {
     private val listener = AtomicReference<nw_listener_t?>(null)
@@ -118,7 +140,16 @@ internal class NativeTlsListener(
             }
         }
         nw_listener_set_new_connection_handler(created) { connection ->
-            if (connection != null) onConnection(connection)
+            if (connection != null) {
+                nw_connection_set_queue(connection, queue)
+                nw_connection_set_state_changed_handler(connection) { connectionState, _ ->
+                    if (connectionState == nw_connection_state_ready) {
+                        // Only now does the peer certificate chain exist to be read.
+                        onConnection(connection, peerPinOf(connection))
+                    }
+                }
+                nw_connection_start(connection)
+            }
         }
         nw_listener_start(created)
     }
@@ -147,5 +178,66 @@ internal class NativeTlsListener(
         } finally {
             CFRelease(secTrust as CFTypeRef)
         }
+    }
+}
+
+/**
+ * The SPKI pin of the peer that authenticated [connection], or null if there is no verified TLS
+ * identity on it.
+ *
+ * This is the native counterpart of `peerSpkiPin()` on the JVM, and consumers depend on it for more
+ * than logging: passman selects both the per-operation permissions and the inbound *decryption
+ * policy* from this value. A payload from a device whose pairing requires a signed hybrid envelope
+ * must not be processed as legacy.
+ *
+ * Read from THIS connection's own TLS metadata rather than cached from the verify block. That
+ * distinction is the whole point. The verify block is configured on the listener's shared
+ * parameters and fires for every connection, so anything it stashes would have to be correlated back
+ * to a specific connection afterwards — and getting that correlation wrong under concurrent
+ * handshakes would hand a handler another peer's identity. That fails OPEN and silently, which is
+ * the worst possible direction. Going through nw_connection_copy_protocol_metadata makes the
+ * attribution structural: there is no shared state to mis-associate.
+ *
+ * Returns null rather than throwing on an unreadable or unparseable chain. Null means "no verified
+ * identity", which callers must treat as unauthenticated — never as a reason to skip a check.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun peerPinOf(connection: nw_connection_t): String? {
+    val tlsDefinition = nw_protocol_copy_tls_definition() ?: return null
+    val protocolMetadata = nw_connection_copy_protocol_metadata(connection, tlsDefinition) ?: return null
+    val securityMetadata = nw_tls_copy_sec_protocol_metadata(protocolMetadata) ?: return null
+
+    var leafDer: ByteArray? = null
+    // The handler is invoked once per certificate, leaf first. Only the leaf is pinned: it carries
+    // the device's long-term key, which is what pairing recorded.
+    val readable = sec_protocol_metadata_access_peer_certificate_chain(securityMetadata) { certificate ->
+        if (leafDer == null && certificate != null) {
+            val ref = sec_certificate_copy_ref(certificate)
+            if (ref != null) {
+                try {
+                    val data = SecCertificateCopyData(ref)
+                    if (data != null) {
+                        try {
+                            val length = CFDataGetLength(data).toInt()
+                            val bytes = CFDataGetBytePtr(data)
+                            if (length > 0 && bytes != null) leafDer = bytes.readBytes(length)
+                        } finally {
+                            CFRelease(data as CFTypeRef)
+                        }
+                    }
+                } finally {
+                    CFRelease(ref as CFTypeRef)
+                }
+            }
+        }
+    }
+    if (!readable) return null
+
+    val der = leafDer ?: return null
+    return try {
+        SpkiPin.ofCertificate(der)
+    } catch (_: IllegalArgumentException) {
+        // A peer certificate we cannot parse is a peer we cannot attribute. Refuse to guess.
+        null
     }
 }

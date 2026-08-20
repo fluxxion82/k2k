@@ -12,12 +12,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.Network.nw_connection_send
-import platform.Network.nw_connection_set_queue
-import platform.Network.nw_connection_start
 import platform.Network.nw_connection_t
 import platform.darwin.DISPATCH_QUEUE_PRIORITY_DEFAULT
 import platform.darwin.dispatch_data_create
 import platform.darwin.dispatch_get_global_queue
+import kotlin.concurrent.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,6 +90,39 @@ class NativeTlsListenerTest {
     }
 
     /**
+     * Attribution, not merely authentication. Passman selects both its per-operation permissions and
+     * its inbound decryption policy from this value, so a handler that learns *a* peer authenticated
+     * without learning *which* is not usable. Getting it wrong would fail open silently, which is
+     * why this reads the pin from the connection's own TLS metadata rather than from anything the
+     * shared verify block stashed.
+     */
+    @Test
+    fun handlerLearnsWhichPeerAuthenticated() = runBlocking {
+        val seen = AtomicReference<String?>(null)
+        val port = startListener(allowing = setOf(client.pin), observePeer = { seen.value = it })
+
+        val http = HttpClient(Darwin) {
+            engine { installMutualTls(identity = client, serverPins = setOf(server.pin)) }
+        }
+        try {
+            withTimeoutOrNull(15_000) { http.get("https://127.0.0.1:$port/") }
+        } finally {
+            http.close()
+        }
+
+        assertEquals(
+            client.pin,
+            seen.value,
+            "the server must attribute the connection to the client that actually authenticated",
+        )
+        assertEquals(
+            false,
+            seen.value == server.pin,
+            "attribution must not report our own identity back as the peer's",
+        )
+    }
+
+    /**
      * The stranger presents a valid, well-formed certificate — it is simply not one we paired with.
      * That is the case pinning exists for, and the one a chain-validation-only server would let
      * through if the certificate happened to be CA-signed.
@@ -136,11 +168,17 @@ class NativeTlsListenerTest {
      * Starts a listener that answers any request with a fixed minimal response, so a successful
      * handshake is observable as a completed HTTP round trip rather than inferred from a hang.
      */
-    private suspend fun startListener(allowing: Set<String>): Int {
+    private suspend fun startListener(
+        allowing: Set<String>,
+        observePeer: (String?) -> Unit = {},
+    ): Int {
         val started = NativeTlsListener(
             identity = server,
             allowedClientPins = allowing,
-            onConnection = { connection -> respondAndClose(connection) },
+            onConnection = { connection, peerPin ->
+                observePeer(peerPin)
+                respond(connection)
+            },
         )
         listener = started
         started.start(0)
@@ -152,11 +190,9 @@ class NativeTlsListenerTest {
         error("listener never reached ready")
     }
 
-    private fun respondAndClose(connection: nw_connection_t) {
+    /** The listener has already started the connection; we only write the reply. */
+    private fun respond(connection: nw_connection_t) {
         val queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT.toLong(), 0uL)
-        nw_connection_set_queue(connection, queue)
-        nw_connection_start(connection)
-
         val body = "k2k"
         val response = (
             "HTTP/1.1 200 OK\r\n" +
