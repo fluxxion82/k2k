@@ -105,8 +105,20 @@ match.
 computation, identity loading, the cross-platform pin test, ATS and permission plumbing) is a
 prerequisite for full parity too, so none of it is throwaway.
 
-What it costs: iOS can no longer *receive* a push. `/sync-pull/{kind}` is already client-initiated
-and returns data, so the pull direction may already be served; the `/upload`-to-iOS direction is not.
+What it costs: iOS can no longer *receive* a push. `/sync-pull/{kind}` is client-initiated and
+returns data, so the pull direction is served; the `/upload`-to-iOS direction is not.
+
+**Do not read that as "client-only is probably enough".** It is not, at least for Passman, and the
+reason is protocol rather than performance. Passman's sync is bilateral by design: both devices enter
+Sync Mode, each starts a receive server, and convergence happens because each side pulls after a push
+lands. A device that cannot be pushed to does not sync more slowly — it does not participate in the
+handshake at all, and the peer's 60-second window expires waiting on it. (Established with the
+passman session, 2026-08-20.)
+
+So for an iOS Passman client, one of two things has to happen: k2k grows a native server, or the
+sync protocol changes to a pull-only convergence that does not assume both ends listen. That is a
+real fork, and it should be decided deliberately rather than discovered when an iOS port stalls at
+pairing. moviePicker is unaffected — its sync is a plaintext one-way push it initiates itself.
 
 **Step 2 — a one-day spike on the backgrounding question** (see Unknowns). It decides whether
 iOS-as-server is worth building at all.
