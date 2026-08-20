@@ -213,3 +213,40 @@ internal class DeviceIdentity private constructor(
 private fun CFRelease(ref: CPointer<*>?) {
     if (ref != null) platform.CoreFoundation.CFRelease(ref as CFTypeRef)
 }
+
+/**
+ * Wraps this identity as a `sec_identity_t` for Network.framework.
+ *
+ * Returns null when the certificate cannot be re-parsed or when SecIdentityCreate rejects the
+ * pairing — Apple returns null there when the private key does not correspond to the certificate's
+ * public key, which for a locally generated identity should be impossible and is worth failing on
+ * rather than papering over.
+ *
+ * The caller owns the result and must CFRelease it.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun DeviceIdentity.asSecIdentity(): platform.Security.sec_identity_t? {
+    val certificate = certificateDer.usePinned { pinned ->
+        val data = platform.Foundation.NSData.create(
+            bytes = pinned.addressOf(0),
+            length = certificateDer.size.toULong(),
+        )
+        val cfData = platform.Foundation.CFBridgingRetain(data) as platform.CoreFoundation.CFDataRef
+        try {
+            platform.Security.SecCertificateCreateWithData(null, cfData)
+        } finally {
+            platform.CoreFoundation.CFRelease(cfData as CFTypeRef)
+        }
+    } ?: return null
+    try {
+        val secIdentity = platform.Security.SecIdentityCreate(null, certificate, privateKey)
+            ?: return null
+        try {
+            return platform.Security.sec_identity_create(secIdentity)
+        } finally {
+            platform.CoreFoundation.CFRelease(secIdentity as CFTypeRef)
+        }
+    } finally {
+        platform.CoreFoundation.CFRelease(certificate as CFTypeRef)
+    }
+}
