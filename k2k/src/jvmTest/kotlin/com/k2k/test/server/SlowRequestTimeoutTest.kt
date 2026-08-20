@@ -50,6 +50,13 @@ class SlowRequestTimeoutTest {
             getFileFromName = { ByteArray(0) },
             onFileUploaded = { _, _, _ -> },
             requestReadTimeoutSeconds = 1,
+            // A pairing exchange makes this the PAIRING listener, which is the mode that defaults to
+            // having a deadline at all. The explicit 1 above only shortens it so the test is quick.
+            pairingBundleExchange = PairingBundleExchange(
+                localBundle = { ByteArray(0) },
+                validatePeerBundle = { true },
+                onPeerBundle = { _, _, _ -> true },
+            ),
         ).also { port = it.startOnEphemeralPort() }
 
         Socket("127.0.0.1", port).use { socket ->

@@ -82,6 +82,12 @@ const val PAIRING_PROOF_HEADER = "X-Passman-Pairing-Proof"
  */
 const val MAX_PAIRING_PROOF_CHARS = 128
 
+/**
+ * Read/write deadline applied to the plaintext pairing listener, whose handlers do only cheap,
+ * bounded work. It is deliberately not applied to the data server — see [startServer].
+ */
+const val PAIRING_TIMEOUT_SECONDS = 15
+
 fun startServer(
     port: Int,
     tempFilePath: String,
@@ -101,12 +107,26 @@ fun startServer(
     maxUploadBytes: Long = 25L * 1024 * 1024,
     maxSyncPullRequestBytes: Long = 64L * 1024,
     // Time-based DoS caps, the counterpart to the byte caps above: those bound how MUCH a caller
-    // may send, these bound how LONG it may take. Ktor's default is 0 — no timeout — so a caller
-    // that opens a connection and dribbles a request forever holds a worker for free. That is
-    // cheapest to do against the pairing listener, which is plaintext and reachable by any host on
-    // the LAN.
-    requestReadTimeoutSeconds: Int = 15,
-    responseWriteTimeoutSeconds: Int = 15,
+    // may send, these bound how LONG it may take. Ktor's default is 0, meaning no timeout at all,
+    // so a caller that opens a connection and dribbles a request forever holds a worker for free.
+    //
+    // null means "use the default for this server's mode", and the two modes genuinely differ:
+    //
+    //   Pairing listener (pairingBundleExchange != null) — plaintext, reachable by any host on the
+    //   LAN, and its handlers are fast (validate a bundle, compare a proof). Hostile exposure, cheap
+    //   work: a timeout is exactly right, and PAIRING_TIMEOUT_SECONDS applies.
+    //
+    //   Data server — behind mutual TLS, so only paired devices reach it, and its handlers are slow
+    //   by design: onFileUploaded decrypts, re-seals and atomically publishes a vault. Trusted
+    //   callers, expensive work: a timeout here is actively harmful, and the default is 0.
+    //
+    // That asymmetry is not fussiness. Netty's ReadTimeoutHandler fires when nothing has been READ
+    // on the connection for the period, and that clock keeps running while a handler is busy — so a
+    // read timeout doubles as a ceiling on handler runtime. Setting 15s here once gave every upload
+    // 15 seconds to finish its crypto before the server killed its own connection, surfacing as an
+    // intermittent sync failure that looks nothing like a timeout. See SlowHandlerNotTimedOutTest.
+    requestReadTimeoutSeconds: Int? = null,
+    responseWriteTimeoutSeconds: Int? = null,
     // Per-operation authorization. Called with the op ("passwords"/"pgp-keys"/"keystore") and the
     // connecting client's verified SPKI pin (null if unavailable). Return false to reject with 403.
     // Null (default) = allow all, so the plaintext pairing server and legacy callers are unaffected.
@@ -221,8 +241,11 @@ fun startServer(
         configure = {
             // This overload takes no `port`, so bind the connector here.
             connector { this.port = port }
-            this.requestReadTimeoutSeconds = requestReadTimeoutSeconds
-            this.responseWriteTimeoutSeconds = responseWriteTimeoutSeconds
+            // See the parameter docs: timeouts protect the hostile-but-fast pairing listener and
+            // would sabotage the trusted-but-slow data server.
+            val modeDefault = if (pairingBundleExchange != null) PAIRING_TIMEOUT_SECONDS else 0
+            this.requestReadTimeoutSeconds = requestReadTimeoutSeconds ?: modeDefault
+            this.responseWriteTimeoutSeconds = responseWriteTimeoutSeconds ?: modeDefault
             if (sslContext != null) {
                 channelPipelineConfig = { pipeline ->
                     pipeline.addFirst("ssl", sslContext.newHandler(pipeline.channel().alloc()))
