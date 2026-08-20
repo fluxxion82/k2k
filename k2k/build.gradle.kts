@@ -122,6 +122,19 @@ kotlin {
                 // THEIR catalog. An alias here would become a key every consumer must define, at a
                 // version this project does not control.
                 implementation("at.asitplus.signum:indispensable:3.26.0")
+
+                // The Darwin engine is the ONLY way to do mutual TLS from Kotlin/Native. CIO and
+                // raw ktor-network cannot: their nonJvm openTLSSession is literally
+                // error("TLS sessions are not supported on Native platform."), so Socket.tls()
+                // compiles on iOS and throws at runtime.
+                //
+                // Declared here rather than through `libs` because passman's catalog has no
+                // ktor-client-darwin key, so an alias would fail their configuration outright.
+                // The BOM is what keeps this version-locked to the rest of Ktor: these artifacts
+                // must agree, and a darwin client pinned beside a consumer-supplied core is exactly
+                // the skew that catalog coupling already caused once with Ktor 3.0.1 vs 3.5.2.
+                implementation(project.dependencies.platform("io.ktor:ktor-bom:3.5.2"))
+                implementation("io.ktor:ktor-client-darwin")
             }
         }
     }
