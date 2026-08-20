@@ -65,6 +65,18 @@ Planned order, so the library leads and consumers follow rather than each solvin
    mutual TLS — on all three platforms.
 3. Passman and moviePicker adopt what the example demonstrates.
 
+**Known trap for the Android example.** Compose Multiplatform's resource packaging is broken under
+`com.android.kotlin.multiplatform.library`, the plugin this library now uses.
+`copyAndroidMainComposeResourcesToAndroidAssets` fails with *"property 'outputDirectory' doesn't
+have a configured value"* and never enters the `assembleDebug` task graph at all, so
+`composeResources` reach **zero APK entries** — silently, with a green build. Reproduced on Compose
+Multiplatform 1.11.1 and 1.12.0-rc01 with AGP 9.3.1; the control case confirms the files do reach
+`preparedResources/commonMain`, so it is specifically the Android asset copy that is missing.
+
+This does not affect `k2k` itself, which ships no Compose resources. It will bite the moment a
+rebuilt `droid` example carries a font or a drawable, and it will not announce itself. Verify assets
+are actually in the APK before assuming they shipped.
+
 ## Scope
 
 `Discovery` and `Connection` (UDP broadcast discovery and a raw TCP channel) were removed. Neither
