@@ -8,10 +8,6 @@
 import SwiftUI
 import CoreData
 import presenter
-//import KMPNativeCoroutinesAsync
-//import KMPNativeCoroutinesRxSwift
-//import KMPNativeCoroutinesCombine
-//import KMPNativeCoroutinesCore
 
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext

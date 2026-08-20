@@ -8,10 +8,6 @@
 import Foundation
 import presenter
 import Combine
-import KMPNativeCoroutinesAsync
-import KMPNativeCoroutinesRxSwift
-import KMPNativeCoroutinesCombine
-import KMPNativeCoroutinesCore
 
 @MainActor
 class MainViewModel: ObservableObject {
@@ -20,40 +16,15 @@ class MainViewModel: ObservableObject {
         name: "mobile_ios", receiving: false
     )
 
-    private var task: AnyCancellable? = nil
-    
     func startObservingPeers() {
-//        let publisher = createPublisher(for: mainPresenter.foundPeersFlow)
-//
-//        task = publisher.sink { completion in
-//            print("Received completion: \(completion)")
-//        } receiveValue: { value in
-//            print("Received value: \(value)")
-//            self.peers = [String]()
-//            value.forEach { K2kHost in
-//                self.peers.append(K2kHost.hostAddress)
-//            }
-//        }
-        
+        // Peer observation from Swift was never wired up: the KMP-NativeCoroutines path that
+        // once lived here was commented out because the iOS discovery flow never populates
+        // (KTOR-6489). When that is fixed, expose foundPeers via Swift export
+        // (Flow -> AsyncSequence) rather than reintroducing a coroutines-interop pod.
         mainPresenter.onStart()
-        
-//        let observable = createObservable(for: mainPresenter.peerCommonFlow)
-//
-//        // Now use this observable as you would any other
-//        let disposable = observable.subscribe(onNext: { value in
-//            print("Received value: \(value)")
-//        }, onError: { error in
-//            print("Received error: \(error)")
-//        }, onCompleted: {
-//            print("Observable completed")
-//        }, onDisposed: {
-//            print("Observable disposed")
-//        })
     }
-        
+
     func stopObservingPeers() {
         mainPresenter.onStop()
-        task?.cancel()
     }
 }
-

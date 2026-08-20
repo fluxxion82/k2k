@@ -1,7 +1,6 @@
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
-    alias(libs.plugins.native.coroutines)
 }
 
 group = "com.k2k.presenter"

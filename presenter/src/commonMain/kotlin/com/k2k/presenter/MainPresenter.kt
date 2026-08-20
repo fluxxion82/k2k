@@ -3,7 +3,6 @@ package com.k2k.presenter
 import com.k2k.Host
 import com.k2k.connect.Connection
 import com.k2k.discover.Discovery
-import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -30,9 +29,6 @@ open class MainPresenter(val name: String, val receiving: Boolean): CoroutineSco
             .setHostIsClient(false)
             .build()
 
-    // Explicit type required: KMP-NativeCoroutines needs a declared return type on
-    // annotated declarations to generate the Swift-facing wrapper.
-    @NativeCoroutinesState
     val foundPeers: MutableStateFlow<List<Host>> = MutableStateFlow(listOf())
 
     fun onStart() {
