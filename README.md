@@ -1,41 +1,92 @@
 # k2k
 
-Kotlin Multiplatform peer-to-peer networking for devices on the same LAN: UDP broadcast discovery plus client/server data and file transfer, built on Ktor. Supports mutually authenticated TLS on JVM targets. Started as a Ktor-based rewrite of [DATL4G/Klient2Klient](https://github.com/DATL4G/Klient2Klient).
+Kotlin Multiplatform LAN transport for device-to-device sync, built on Ktor: file upload/download
+and a bounded pairing exchange, with mutually authenticated TLS and SPKI-pinned device certificates
+on JVM targets. Started as a Ktor-based rewrite of
+[DATL4G/Klient2Klient](https://github.com/DATL4G/Klient2Klient).
 
-k2k is the device-to-device sync transport of the [Passman](https://github.com/fluxxion82/passwordManager) password manager.
+k2k is the device-to-device sync transport of the
+[Passman](https://github.com/fluxxion82/passwordManager) password manager.
 
 ## Modules
 
 | Module | Type | Purpose |
 | --- | --- | --- |
-| `k2k` | KMP library (JVM + iosArm64 + iosSimulatorArm64) | Core p2p: UDP broadcast discovery, connections, file upload/download. Public entry points are `Discovery.Builder` and `Connection.Builder` in `commonMain`. Exposed to iOS via CocoaPods as `k2k.framework`. |
-| `presenter` | KMP library (JVM + iOS) | Shared presenter layer for the example apps (KMP-NativeCoroutines for iOS interop). |
-| `desk` | Compose Desktop app | Example desktop app. |
-| `droid` | Android app | Example Android app (acquires a multicast lock for discovery). |
-| `ios` | Xcode project | Example iOS app, consuming `k2k` and `presenter` as CocoaPods. |
+| `k2k` | KMP library (JVM + iosArm64 + iosSimulatorArm64) | The whole library. See Layout below. |
 
-## How it works
+## Layout
 
-- `Discovery.makeDiscoverable()` broadcasts a serialized `Host` over a UDP port at a fixed interval; `Discovery.startDiscovery()` listens on the same port and accumulates peers, evicting entries that stop pinging.
-- Once a peer is discovered, `Connection.Builder` opens a client/server channel to it for data or file transfer. Discovery and connection use different ports by convention (the examples use 1337 and 2323).
+Two transports live here, and they do not share a wire protocol.
+
+| Package | Targets | What it is |
+| --- | --- | --- |
+| `com.k2k.test.{server,client,tls}` | JVM only | The current transport: multipart upload, download, sync-pull, and a bounded pairing-bundle exchange, over mutual TLS with SPKI pinning and per-operation authorization. This is what Passman uses. |
+| `com.k2k.{client,server}` | common | An older plaintext HTTP upload/download path, plus `PlatformServer`. Used by moviePicker. No TLS, no caps, no authorizer. |
+| `com.k2k.NetInterface` | common | Local/broadcast address lookup. The one symbol both consumers share. |
+| `com.k2k.NetworkScanner`, `PlatformSocket` | Android + native | Subnet sweep for peer finding. The JVM actual is `TODO()` — do not call it from JVM. |
+
+The `com.k2k.test.*` naming is historical and misleading: that is production code in `src/jvmMain`,
+not a test source set. Renaming it to `com.k2k.transport.*` is worthwhile but has to be coordinated
+with Passman, whose production code imports those packages.
+
+## Consumers
+
+Both apps include k2k as a Gradle subproject by path rather than as a published artifact, so `libs`
+inside `k2k/build.gradle.kts` resolves against **the consumer's** version catalog, not this repo's.
+This repo's catalog is only used for the standalone build.
+
+- **Passman** — vendors k2k as a git submodule and uses the mTLS transport.
+- **moviePicker** — uses the plaintext transport and `NetworkScanner`.
 
 ## Commands
 
 JDK 17 required. Run from the repo root.
 
 ```bash
-./gradlew build                 # build everything
-./gradlew :desk:run             # desktop example
-./gradlew :droid:installDebug   # Android example on a connected device
-./gradlew :k2k:jvmTest          # library tests
-./build_pods.sh                 # regenerate podspecs before opening ios/ios.xcworkspace
+./gradlew build          # build everything
+./gradlew :k2k:jvmTest   # library tests
 ```
+
+## Example apps
+
+Temporarily absent, and coming back. `presenter`, `desk`, `droid`, and `ios` demonstrated
+`Discovery`/`Connection`, which were removed (see Scope below), so they no longer compiled against
+anything. They are out of `settings.gradle.kts` but still on disk.
+
+They are a first-class deliverable, not a test harness: someone who finds this repo should be able
+to read the example, see how pairing and transfer actually work, and lift it into their own project.
+That is what the examples are for, and no amount of coverage inside a consuming app substitutes for
+it.
+
+Planned order, so the library leads and consumers follow rather than each solving it separately:
+
+1. Close the iOS TLS gap in the library.
+2. Rewrite the examples against the current transport — pairing exchange, then upload/download over
+   mutual TLS — on all three platforms.
+3. Passman and moviePicker adopt what the example demonstrates.
+
+## Scope
+
+`Discovery` and `Connection` (UDP broadcast discovery and a raw TCP channel) were removed. Neither
+consumer used them: Passman pairs out-of-band via QR with a safety number, and moviePicker shows its
+IP for manual entry plus a subnet sweep. For a password manager, broadcast discovery is also the
+wrong posture — it announces device presence and invites the man-in-the-middle that safety numbers
+exist to prevent.
+
+Their verified root causes are recorded in `CLAUDE.md` under Known issues, so if broadcast discovery
+is ever wanted again, resurrect from git history rather than re-deriving the bugs.
 
 ## Known issues
 
-- iOS shows up as discoverable to desktop/Android, but its own discovered-hosts flow doesn't populate, so the iOS example's peer list stays empty. Tracked upstream at [KTOR-6489](https://youtrack.jetbrains.com/issue/KTOR-6489).
-- "Address already in use" exceptions appear when stopping and restarting discovery on the same port.
-- The iOS example can crash if the desktop app starts discovery first.
+- **mTLS is JVM-only.** `ktor-network-tls` is declared in `commonMain` and imported nowhere. iOS and
+  native peers have no encrypted transport. This is the largest open gap.
+- **`NetInterface.getAddresses()` returns empty on iOS and leaks per call.** `nativeMain/NetInterface.kt`
+  reads the `ifaddrs` pointer before `getifaddrs()` populates it, so the walk never runs, and
+  `freeifaddrs` then frees null while the real list leaks. `getLocalAddress()` in the same file is
+  correct — copy its shape.
+- **No Android target.** `androidTarget()` is absent pending an AGP bump, so `src/androidMain` is
+  carried but not compiled and has drifted. This blocks moviePicker, which calls
+  `NetworkScanner(androidContext())` — only the Android actual takes a `Context`.
 
 ## License
 

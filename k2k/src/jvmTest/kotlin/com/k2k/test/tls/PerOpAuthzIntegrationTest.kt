@@ -1,9 +1,9 @@
 package com.k2k.test.tls
 
+import com.k2k.test.startOnEphemeralPort
 import com.k2k.test.client.uploadFile
 import com.k2k.test.client.downloadFile
 import com.k2k.test.server.startServer
-import java.net.ServerSocket
 import java.security.KeyStore
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -43,7 +43,6 @@ class PerOpAuthzIntegrationTest {
     fun setUp() {
         alice = load("alice")
         bob = load("bob")
-        port = ServerSocket(0).use { it.localPort }
         tempDir = java.nio.file.Files.createTempDirectory("k2k-authz").toFile().absolutePath
     }
 
@@ -53,9 +52,9 @@ class PerOpAuthzIntegrationTest {
     }
 
     // Alice trusts Bob at the TLS layer, but authorizes him only for "passwords".
-    private fun startAliceServer() {
+    private suspend fun startAliceServer() {
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { ByteArray(0) },
             onFileUploaded = { _, _, _ -> },
@@ -63,20 +62,9 @@ class PerOpAuthzIntegrationTest {
             artifactDownloadHandlers = mapOf("pgp-keys" to { "artifact".toByteArray() }),
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
             authorizer = { op, pin -> pin == bobPin && op == "passwords" },
-        ).also { it.start(wait = false) }
-        awaitListening(port)
+        ).also { port = it.startOnEphemeralPort() }
     }
 
-    private fun awaitListening(port: Int) {
-        repeat(100) {
-            try {
-                java.net.Socket("127.0.0.1", port).close()
-                return
-            } catch (_: Exception) {
-                Thread.sleep(50)
-            }
-        }
-    }
 
     private fun bobTls() = K2kClientTls(bob, password, alias, serverPins = setOf(alicePin))
 

@@ -7,8 +7,7 @@ import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import java.net.ServerSocket
-import java.net.Socket
+import com.k2k.test.startOnEphemeralPort
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -25,7 +24,6 @@ class UploadValidationIntegrationTest {
 
     @BeforeTest
     fun setUp() {
-        port = ServerSocket(0).use { it.localPort }
         tempDir = Files.createTempDirectory("k2k-upload-validation").toFile().absolutePath
     }
 
@@ -39,12 +37,11 @@ class UploadValidationIntegrationTest {
     fun upload_withMultipleFileItems_isRejectedWithoutInvokingHandler() = runBlocking {
         var uploadedCount = 0
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { ByteArray(0) },
             onFileUploaded = { _, _, _ -> uploadedCount++ },
-        ).also { it.start(wait = false) }
-        awaitListening()
+        ).also { port = it.startOnEphemeralPort() }
 
         val response = client.submitFormWithBinaryData(
             url = "http://127.0.0.1:$port/upload",
@@ -69,15 +66,14 @@ class UploadValidationIntegrationTest {
         var invoked = false
         var receivedPin: String? = "unset"
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { ByteArray(0) },
             onFileUploaded = { _, _, pin ->
                 invoked = true
                 receivedPin = pin
             },
-        ).also { it.start(wait = false) }
-        awaitListening()
+        ).also { port = it.startOnEphemeralPort() }
 
         val response = client.submitFormWithBinaryData(
             url = "http://127.0.0.1:$port/upload",
@@ -95,15 +91,4 @@ class UploadValidationIntegrationTest {
         append(HttpHeaders.ContentDisposition, "filename=$fileName")
     }
 
-    private fun awaitListening() {
-        repeat(100) {
-            try {
-                Socket("127.0.0.1", port).close()
-                return
-            } catch (_: Exception) {
-                Thread.sleep(50)
-            }
-        }
-        error("server did not start")
-    }
 }

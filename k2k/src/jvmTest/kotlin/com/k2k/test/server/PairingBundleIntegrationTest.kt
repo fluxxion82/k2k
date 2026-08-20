@@ -8,8 +8,8 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.*
 import io.ktor.http.HttpStatusCode
-import java.net.ServerSocket
 import java.net.Socket
+import com.k2k.test.startOnEphemeralPort
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -62,11 +62,10 @@ class PairingBundleIntegrationTest {
     private var onPeerBundleFailure: Throwable? = null
 
     @BeforeTest
-    fun setUp() {
-        port = ServerSocket(0).use { it.localPort }
+    fun setUp() = runBlocking {
         tempDir = Files.createTempDirectory("k2k-pairing-bundle").toFile().absolutePath
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { fileName ->
                 if (fileName == "publicKey") "legacy-rsa-public-key".encodeToByteArray() else ByteArray(0)
@@ -88,8 +87,7 @@ class PairingBundleIntegrationTest {
                     acceptPeerBundle
                 },
             ),
-        ).also { it.start(wait = false) }
-        awaitListening()
+        ).also { port = it.startOnEphemeralPort() }
     }
 
     @AfterTest
@@ -416,15 +414,4 @@ class PairingBundleIntegrationTest {
             )
         }
 
-    private fun awaitListening() {
-        repeat(100) {
-            try {
-                Socket("127.0.0.1", port).close()
-                return
-            } catch (_: Exception) {
-                Thread.sleep(50)
-            }
-        }
-        error("server did not start")
-    }
 }

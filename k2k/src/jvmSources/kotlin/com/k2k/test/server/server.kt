@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.asFlow
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -96,6 +100,13 @@ fun startServer(
     // than maxSyncPullRequestBytes. Both bound memory/disk an unauthenticated-shaped flood can force.
     maxUploadBytes: Long = 25L * 1024 * 1024,
     maxSyncPullRequestBytes: Long = 64L * 1024,
+    // Time-based DoS caps, the counterpart to the byte caps above: those bound how MUCH a caller
+    // may send, these bound how LONG it may take. Ktor's default is 0 — no timeout — so a caller
+    // that opens a connection and dribbles a request forever holds a worker for free. That is
+    // cheapest to do against the pairing listener, which is plaintext and reachable by any host on
+    // the LAN.
+    requestReadTimeoutSeconds: Int = 15,
+    responseWriteTimeoutSeconds: Int = 15,
     // Per-operation authorization. Called with the op ("passwords"/"pgp-keys"/"keystore") and the
     // connecting client's verified SPKI pin (null if unavailable). Return false to reject with 403.
     // Null (default) = allow all, so the plaintext pairing server and legacy callers are unaffected.
@@ -104,6 +115,16 @@ fun startServer(
     // Optional diagnostics hook. It is invoked from download handling with the protocol negotiated
     // by the connecting peer, allowing integration tests to observe the actual client handshake.
     onPeerTlsProtocol: ((String?) -> Unit)? = null,
+    // Invoked when an upload temp file could NOT be created owner-only, because the filesystem
+    // backing tempFilePath reports no POSIX attribute view. The upload still proceeds, but the file
+    // holding the payload is created at the process umask instead — on a shared machine that is a
+    // local disclosure window for the length of the transfer.
+    //
+    // This exists because the alternative is a SILENT security downgrade: without it, a device where
+    // the check unexpectedly fails writes payload bytes at umask permissions, logs nothing, and
+    // shows nothing in a bug report. Applications handling sensitive payloads should treat this
+    // firing as a real finding rather than ignoring it.
+    onInsecureTempFile: ((path: String) -> Unit)? = null,
     // A non-null exchange creates the intentionally tiny plaintext pairing route table: the legacy
     // RSA public-key download plus the bounded mutual pairing-bundle exchange. It never registers
     // upload, artifact, sync-pull, or arbitrary download routes.
@@ -123,7 +144,7 @@ fun startServer(
 
             post("/upload") {
                 if (!authorizeOp("passwords", authorizer)) return@post
-                handleUpload(tempFilePath, onFileUploaded, maxUploadBytes)
+                handleUpload(tempFilePath, onFileUploaded, maxUploadBytes, onInsecureTempFile)
             }
 
             get("/download/{fileName}") {
@@ -137,7 +158,7 @@ fun startServer(
             for ((kind, handler) in artifactUploadHandlers) {
                 post("/upload/$kind") {
                     if (!authorizeOp(kind, authorizer)) return@post
-                    handleUpload(tempFilePath, handler, maxUploadBytes)
+                    handleUpload(tempFilePath, handler, maxUploadBytes, onInsecureTempFile)
                 }
             }
 
@@ -152,13 +173,19 @@ fun startServer(
             for ((kind, handler) in syncPullHandlers) {
                 post("/sync-pull/$kind") {
                     if (!authorizeOp(kind, authorizer)) return@post
+                    // Cheap rejection first: a caller that honestly advertises an oversized body is
+                    // turned away without reading any of it.
                     val declaredLength = call.request.contentLength()
                     if (declaredLength != null && declaredLength > maxSyncPullRequestBytes) {
                         call.respond(HttpStatusCode.PayloadTooLarge, "request too large")
                         return@post
                     }
-                    val clientPubkey = call.receive<ByteArray>()
-                    if (clientPubkey.size > maxSyncPullRequestBytes) {
+                    // A chunked request declares no length, so the check above cannot fire and a
+                    // buffering read would hold the whole body before any size test ran. Read
+                    // incrementally instead and abort the moment the cap is passed.
+                    val clientPubkey = try {
+                        readBoundedBody(maxSyncPullRequestBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                    } catch (_: BodyTooLargeException) {
                         call.respond(HttpStatusCode.PayloadTooLarge, "request too large")
                         return@post
                     }
@@ -194,6 +221,8 @@ fun startServer(
         configure = {
             // This overload takes no `port`, so bind the connector here.
             connector { this.port = port }
+            this.requestReadTimeoutSeconds = requestReadTimeoutSeconds
+            this.responseWriteTimeoutSeconds = responseWriteTimeoutSeconds
             if (sslContext != null) {
                 channelPipelineConfig = { pipeline ->
                     pipeline.addFirst("ssl", sslContext.newHandler(pipeline.channel().alloc()))
@@ -259,8 +288,8 @@ private fun Route.installPairingRoutes(
             return@post
         }
         val peerBundle = try {
-            readBoundedPairingBody(exchange.maxBundleBytes)
-        } catch (_: PairingBundleTooLargeException) {
+            readBoundedBody(exchange.maxBundleBytes)
+        } catch (_: BodyTooLargeException) {
             call.respond(HttpStatusCode.PayloadTooLarge, "pairing bundle too large")
             return@post
         } catch (_: Throwable) {
@@ -308,9 +337,56 @@ private fun Route.installPairingRoutes(
     }
 }
 
-private class PairingBundleTooLargeException : Exception()
+/**
+ * Creates the per-request upload temp file, owner-readable only where the filesystem supports it.
+ *
+ * Vault bytes pass through this file, so the process umask is not an acceptable default —
+ * `File.createTempFile` leaves it world-readable under a typical umask, giving any local user a
+ * read window for the length of the transfer. `Files.createTempFile` also drops the three-character
+ * prefix minimum that made single-character upload names fail the request with a 500.
+ *
+ * The POSIX guard is not dead code on Android: `FileSystems.getDefault()` there is
+ * `LinuxFileSystemProvider`, whose `standardFileAttributeViews()` is a hardcoded
+ * `[basic, posix, unix, owner]` with no platform branching, so the owner-only attribute really is
+ * applied rather than silently skipped. (Read from android-34 libcore sources; unchanged since
+ * java.nio.file landed at API 26. Not yet confirmed by a device run.) Note this whole file is also
+ * why the library's Android minSdk is 26 — java.nio.file does not exist below it.
+ */
+internal fun createUploadTempFile(
+    directory: File,
+    safeName: String,
+    onInsecureTempFile: ((path: String) -> Unit)? = null,
+): File {
+    val ownerOnly = setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+    val posixSupported = FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
+    val path = if (posixSupported) {
+        Files.createTempFile(
+            directory.toPath(),
+            "$safeName.",
+            ".part",
+            PosixFilePermissions.asFileAttribute(ownerOnly),
+        )
+    } else {
+        // Never take this branch quietly. The upload proceeds, but the hardening did not apply, and
+        // that fact has to leave a trace somewhere the application can act on.
+        onInsecureTempFile?.invoke(directory.path)
+        Files.createTempFile(directory.toPath(), "$safeName.", ".part")
+    }
+    return path.toFile()
+}
 
-private suspend fun io.ktor.server.routing.RoutingContext.readBoundedPairingBody(maxBytes: Int): ByteArray {
+private class BodyTooLargeException : Exception()
+
+/**
+ * Reads a request body, aborting as soon as it passes [maxBytes].
+ *
+ * Every route that accepts a body from the network must go through this rather than
+ * `call.receive<ByteArray>()`. A buffering read holds the entire body in heap before any size check
+ * can run, and a chunked request advertises no Content-Length to check in the first place — so the
+ * declared-length test alone bounds nothing. Reading incrementally is what makes the cap bind
+ * memory, which is the whole point of having one.
+ */
+private suspend fun io.ktor.server.routing.RoutingContext.readBoundedBody(maxBytes: Int): ByteArray {
     val out = ByteArrayOutputStream(minOf(maxBytes, 4 * 1024))
     val buffer = ByteArray(minOf(maxBytes, 4 * 1024))
     val channel = call.receiveChannel()
@@ -319,7 +395,7 @@ private suspend fun io.ktor.server.routing.RoutingContext.readBoundedPairingBody
         val count = channel.readAvailable(buffer, 0, buffer.size)
         if (count == -1) break
         total += count
-        if (total > maxBytes) throw PairingBundleTooLargeException()
+        if (total > maxBytes) throw BodyTooLargeException()
         out.write(buffer, 0, count)
     }
     return out.toByteArray()
@@ -387,6 +463,7 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
     tempFilePath: String,
     onFileUploaded: suspend (ByteArray, String, String?) -> Unit,
     maxUploadBytes: Long,
+    onInsecureTempFile: ((path: String) -> Unit)? = null,
 ) {
     // Reject early on a declared oversize body so a flood never gets to stream to disk.
     val declaredLength = call.request.contentLength()
@@ -419,7 +496,7 @@ private suspend fun io.ktor.server.routing.RoutingContext.handleUpload(
                             // Unique temp file per request: concurrent uploads of the same logical
                             // name must not share (and truncate) one on-disk file.
                             uploadName = safeName
-                            tempFile = File.createTempFile("$safeName.", ".part", File(tempFilePath))
+                            tempFile = createUploadTempFile(File(tempFilePath), safeName, onInsecureTempFile)
                             tempOutputStream = tempFile!!.outputStream().buffered()
                         }
                     }
