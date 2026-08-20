@@ -13,7 +13,7 @@
 # netty}, and the kotlin-serialization plugin. Verified present in moviePicker's catalog.
 
 [versions]
-agp = "8.9.1"
+agp = "9.3.1"
 kotlin = "2.4.20-RC"
 kotlinx-datetime = "0.8.0"
 kotlinx-coroutines = "1.11.0"

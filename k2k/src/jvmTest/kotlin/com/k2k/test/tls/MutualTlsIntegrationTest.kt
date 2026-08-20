@@ -1,10 +1,10 @@
 package com.k2k.test.tls
 
+import com.k2k.test.startOnEphemeralPort
 import com.k2k.test.client.downloadFile
 import com.k2k.test.client.requestSyncPull
 import com.k2k.test.client.uploadFile
 import com.k2k.test.server.startServer
-import java.net.ServerSocket
 import java.security.KeyStore
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
@@ -52,7 +52,6 @@ class MutualTlsIntegrationTest {
         alice = load("alice")
         bob = load("bob")
         mallory = load("mallory")
-        port = ServerSocket(0).use { it.localPort }
         tempDir = java.nio.file.Files.createTempDirectory("k2k-mtls").toFile().absolutePath
     }
 
@@ -62,28 +61,16 @@ class MutualTlsIntegrationTest {
     }
 
     // Server is Alice; she trusts only Bob as a client.
-    private fun startAliceServer() {
+    private suspend fun startAliceServer() {
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { "vault-bytes".toByteArray() },
             onFileUploaded = { _, _, _ -> },
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
-        ).also { it.start(wait = false) }
-        awaitListening(port)
+        ).also { port = it.startOnEphemeralPort() }
     }
 
-    private fun awaitListening(port: Int) {
-        // start(wait=false) returns before the socket is necessarily bound; poll briefly.
-        repeat(100) {
-            try {
-                java.net.Socket("127.0.0.1", port).close()
-                return
-            } catch (_: Exception) {
-                Thread.sleep(50)
-            }
-        }
-    }
 
     @Test
     fun pinnedPeer_completesHandshakeAndReceivesData() = runBlocking<Unit> {
@@ -129,14 +116,13 @@ class MutualTlsIntegrationTest {
     fun k2kClient_negotiatesTls13() = runBlocking<Unit> {
         val negotiatedProtocol = AtomicReference<String?>()
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { "vault-bytes".toByteArray() },
             onFileUploaded = { _, _, _ -> },
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
             onPeerTlsProtocol = negotiatedProtocol::set,
-        ).also { it.start(wait = false) }
-        awaitListening(port)
+        ).also { port = it.startOnEphemeralPort() }
 
         downloadFile(
             fileName = "anything",
@@ -158,14 +144,13 @@ class MutualTlsIntegrationTest {
         val uploadPin = AtomicReference<String?>("unset")
         val syncPullPin = AtomicReference<String?>("unset")
         server = startServer(
-            port = port,
+            port = 0,
             tempFilePath = tempDir,
             getFileFromName = { ByteArray(0) },
             onFileUploaded = { _, _, pin -> uploadPin.set(pin) },
             syncPullHandlers = mapOf("passwords" to { _, pin -> syncPullPin.set(pin); "data".toByteArray() }),
             serverTls = K2kServerTls(alice, password, alias, allowedClientPins = setOf(bobPin)),
-        ).also { it.start(wait = false) }
-        awaitListening(port)
+        ).also { port = it.startOnEphemeralPort() }
         val bobTls = K2kClientTls(bob, password, alias, serverPins = setOf(alicePin))
 
         uploadFile(
