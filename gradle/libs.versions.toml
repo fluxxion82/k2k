@@ -14,7 +14,7 @@
 
 [versions]
 agp = "8.9.1"
-kotlin = "2.4.10"
+kotlin = "2.4.20-RC"
 kotlinx-datetime = "0.8.0"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
@@ -71,4 +71,4 @@ jetbrains-kotlin-cocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", ver
 # The trailing -kotlin-<version> names the Kotlin build this compiler plugin was compiled
 # against, and must track the kotlin version above. Compiler plugins are rejected outright
 # by a mismatched compiler, so this is not optional.
-native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.4-kotlin-2.4.10-RC" }
+native_coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version = "1.0.5-kotlin-2.4.20-RC" }
