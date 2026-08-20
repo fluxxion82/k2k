@@ -106,6 +106,22 @@ kotlin {
         getByName("nativeMain") {
             dependencies {
                 api(libs.ktor.server.cio)
+
+                // X.509 construction for on-device identity generation. iOS has no API that creates
+                // or signs a certificate — the whole SecCertificate* surface only parses — so this
+                // fills a gap that exists nowhere else.
+                //
+                // Scoped to nativeMain, NOT commonMain, on purpose. On JVM it would pull
+                // BouncyCastle (bcpkix -> bcutil -> bcprov) into every consumer's graph, and the JVM
+                // needs none of it: identities arrive there as PKCS#12. Passman in particular pins
+                // bcprov with `strictly` to keep a specific patch release, and adding a transitive
+                // request against that is a risk taken for nothing.
+                //
+                // Declared with a literal coordinate rather than through `libs`, also on purpose:
+                // k2k is included as a subproject by both consumers, so `libs` resolves against
+                // THEIR catalog. An alias here would become a key every consumer must define, at a
+                // version this project does not control.
+                implementation("at.asitplus.signum:indispensable:3.26.0")
             }
         }
     }
