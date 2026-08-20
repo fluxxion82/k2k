@@ -65,17 +65,30 @@ Planned order, so the library leads and consumers follow rather than each solvin
    mutual TLS — on all three platforms.
 3. Passman and moviePicker adopt what the example demonstrates.
 
-**Known trap for the Android example.** Compose Multiplatform's resource packaging is broken under
-`com.android.kotlin.multiplatform.library`, the plugin this library now uses.
-`copyAndroidMainComposeResourcesToAndroidAssets` fails with *"property 'outputDirectory' doesn't
-have a configured value"* and never enters the `assembleDebug` task graph at all, so
-`composeResources` reach **zero APK entries** — silently, with a green build. Reproduced on Compose
-Multiplatform 1.11.1 and 1.12.0-rc01 with AGP 9.3.1; the control case confirms the files do reach
-`preparedResources/commonMain`, so it is specifically the Android asset copy that is missing.
+**Required configuration if the Android example ships Compose resources.** Any KMP module using
+`com.android.kotlin.multiplatform.library` — the plugin this library now uses — must turn Android
+resource processing on explicitly:
 
-This does not affect `k2k` itself, which ships no Compose resources. It will bite the moment a
-rebuilt `droid` example carries a font or a drawable, and it will not announce itself. Verify assets
-are actually in the APK before assuming they shipped.
+```kotlin
+kotlin {
+    android {
+        namespace = "..."
+        androidResources { enable = true }
+    }
+}
+```
+
+It is **off by default**, which leaves `variant.sources.assets` null, so Compose's
+`copyAndroidMainComposeResourcesToAndroidAssets` has nothing to attach to. The symptom is
+`composeResources` reaching **zero APK entries** while the build stays green — the task fails to
+configure ("property 'outputDirectory' doesn't have a configured value") and never enters the
+`assembleDebug` graph at all. Desktop and iOS keep working, so nothing looks wrong until someone
+reports a missing icon.
+
+This is required configuration, not an upstream defect — Compose behaves correctly given a variant
+with no assets source, and there is nothing to file or work around. `k2k` itself ships no Compose
+resources and is unaffected; this bites the rebuilt `droid` example the moment it carries a font or
+drawable.
 
 ## Scope
 
