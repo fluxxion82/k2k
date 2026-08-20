@@ -67,6 +67,30 @@ There is no separate lint task configured; `./gradlew check` runs the standard v
 ### Dependency versions
 All versions are pinned in `gradle/libs.versions.toml` (version catalog). Update there, not in individual `build.gradle.kts` files.
 
+## Design principle: fail loudly
+
+Every real defect found in this library and its consumers on 2026-08-19/20 was a **silent** failure —
+correct-looking behaviour with no trace:
+
+- an upload temp file falling back to umask permissions, logging nothing
+- a bind failure swallowed and surfacing as an unexplained 60s timeout weeks later
+- a peer told its vault had synced while the write was still pending, so a failed write recorded
+  success and was never retried
+- Compose resources reaching zero APK entries with a green build
+- a read timeout silently doubling as a ceiling on handler runtime
+
+None of these announced themselves. Several survived code review, green test suites, and in two cases
+a successful device run. What caught them was someone asking what a green result did *not* cover.
+
+So: when this library degrades a guarantee rather than failing outright, it must leave a trace the
+application can act on. `startServer`'s `onInsecureTempFile` exists for exactly that reason — the
+POSIX fallback is legitimate, but taking it silently would mean vault bytes at umask permissions with
+nothing in a bug report. Prefer an optional typed callback (following `onPeerTlsProtocol`) over a log
+line; this library has no logger and a previous commit deliberately stripped `println` debugging.
+
+This matters most for the iOS TLS work in `docs/ios-mtls.md`, where the failure modes are all quiet:
+a mis-derived SPKI pin fails closed forever, and a plaintext fallback would look exactly like success.
+
 ## Known issues
 
 ### Discovery / Connection have no production consumer
