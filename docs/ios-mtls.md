@@ -146,6 +146,30 @@ These are app-side and cannot be shipped by a library. They have to be documente
   *tightening* server trust but never *loosening* it — so a self-signed peer at `https://192.168.1.5`
   needs an `NSExceptionDomains` entry, an `NSAllowsLocalNetworking` entry, or both.
 
+## Consumer constraints on this work
+
+Established with the moviePicker session, 2026-08-20. These are hard boundaries, not preferences —
+each would break a shipping app.
+
+**mTLS must stay opt-in on the data server.** moviePicker's LAN sync is plaintext HTTP with no
+pairing step at all. Making mutual TLS mandatory rather than optional would break it *at runtime and
+silently*, because it would still compile. `serverTls`/`clientTls` staying nullable is a contract, not
+a convenience.
+
+**`NetworkScanner()` keeps its no-arg constructor on native.** moviePicker constructs it from Koin
+with zero arguments (`SharedRepoModule.native.kt:12`) — in contrast to Android, where it takes a
+`Context`. Giving the native one a parameter (a keychain handle, an identity, a config object) is a
+compile break for them. This is moviePicker's *entire* native-side surface on k2k: one symbol.
+Everything else they use is reached from their `commonMain` and resolves to our `nativeMain` actuals
+without ever being named in their native code, so the rest of `nativeMain` can move freely.
+
+**The native `PlatformServer` actual is CIO, and moviePicker ships it.** If this work moves the
+native data server to Network.framework, the API can stay identical and it is still a behaviour
+change on a path in production. Tell them before it lands so they can re-run, rather than having it
+surface in a device test.
+
+Passman is unaffected by all three: it uses `com.k2k.test.*` exclusively and has no native path.
+
 ## Unknowns — resolve before designing around any of these
 
 - **Does an `NWListener` keep accepting after the app backgrounds?** Highest-value unknown. No
