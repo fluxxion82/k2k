@@ -33,7 +33,6 @@ actual class PlatformServer private constructor(
     actual companion object {
         actual fun create(
             port: Int,
-            tempFilePath: String,
             getFileFromName: suspend (String) -> ByteArray,
             onFileUploaded: suspend (ByteArray) -> Unit,
         ): PlatformServer {
@@ -55,62 +54,6 @@ actual class PlatformServer private constructor(
 
                 routing {
                     post("/upload") {
-//                        println("upload file")
-//                        val multipart = call.receiveMultipart()
-//                        var tempFileUrl: NSURL? = null
-//                        var tempFileHandle: NSFileHandle? = null
-//
-//                        multipart.forEachPart { part ->
-//                            println("part: $part")
-//                            if (part is PartData.FileItem) {
-//                                if (tempFileUrl == null) {
-//                                    val fileName = part.originalFileName ?: "temp"
-//                                    val fileManager = NSFileManager.defaultManager
-//                                    val tempPath = "$tempFilePath/$fileName"
-//
-//                                    println("tempPath: $tempPath")
-//                                    // Create the directory if it doesn't exist
-//                                    fileManager.createDirectoryAtPath(
-//                                        tempFilePath,
-//                                        true, // withIntermediateDirectories
-//                                        null, // attributes
-//                                        null  // error
-//                                    )
-//
-//                                    println("created dir")
-//                                    // Create the file
-//                                    fileManager.createFileAtPath(
-//                                        tempPath,
-//                                        null, // empty initial content
-//                                        null // attributes
-//                                    )
-//
-//                                    println("created file")
-//                                    tempFileUrl = NSURL.fileURLWithPath(tempPath)
-//                                    tempFileHandle = NSFileHandle.fileHandleForWritingAtPath(tempPath)
-//                                }
-//
-//                                println("get file bytes")
-//                                val fileBytes = part.provider.asFlow()
-//                                fileBytes.collect { bytes ->
-//                                    val nsData = bytes.toByteArray().toNSData()
-//                                    tempFileHandle?.writeData(nsData)
-//                                }
-//                            }
-//                            part.dispose()
-//                        }
-//
-//                        tempFileHandle?.closeFile()
-//                        println("upload complete")
-//                        call.respondText("200")
-//
-//                        tempFileUrl?.let { url ->
-//                            val fileData = NSData.dataWithContentsOfURL(url)
-//                            fileData?.let { data ->
-//                                val byteArray = data.toByteArray()
-//                                onFileUploaded(byteArray, url.lastPathComponent ?: "unknown")
-//                            }
-//                        }
                         try {
                             val byteArray = call.receive<ByteArray>()
 

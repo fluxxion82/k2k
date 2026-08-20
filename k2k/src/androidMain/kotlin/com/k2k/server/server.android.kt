@@ -28,7 +28,6 @@ actual class PlatformServer private constructor(
     actual companion object {
         actual fun create(
             port: Int,
-            tempFilePath: String,
             getFileFromName: suspend (String) -> ByteArray,
             onFileUploaded: suspend (ByteArray) -> Unit,
         ): PlatformServer {
