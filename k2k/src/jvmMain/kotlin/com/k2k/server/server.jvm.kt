@@ -23,7 +23,6 @@ actual class PlatformServer private constructor(
     actual companion object {
         actual fun create(
             port: Int,
-            tempFilePath: String,
             getFileFromName: suspend (String) -> ByteArray,
             onFileUploaded: suspend (ByteArray) -> Unit,
         ): PlatformServer {
@@ -31,31 +30,6 @@ actual class PlatformServer private constructor(
                 install(ContentNegotiation)
                 routing {
                     post("/upload") {
-//                        println("upload file")
-//                        val multipart = call.receiveMultipart()
-//                        var tempFile: File? = null
-//                        multipart.forEachPart { part ->
-//                            println("part: $part")
-//                            if (part is PartData.FileItem) {
-//                                if (tempFile == null) {
-//                                    println("create temp file")
-//                                    tempFile = File("$tempFilePath/${part.originalFileName}")
-//                                    tempFile?.createNewFile()
-//                                }
-//
-//                                println("get file bytes")
-//                                val fileBytes = part.provider.asFlow()
-//                                fileBytes.collect  {
-//                                    tempFile!!.writeBytes(it.toByteArray())
-//                                }
-//                            }
-//                            part.dispose()
-//                        }
-//                        println("upload complete")
-//                        call.respondText("200")
-//
-//                        tempFile?.let { onFileUploaded(it.readBytes(), it.name) }
-
                         try {
                             val byteArray = call.receive<ByteArray>()
 
