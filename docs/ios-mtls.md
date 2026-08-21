@@ -158,6 +158,30 @@ These are app-side and cannot be shipped by a library. They have to be documente
   *tightening* server trust but never *loosening* it — so a self-signed peer at `https://192.168.1.5`
   needs an `NSExceptionDomains` entry, an `NSAllowsLocalNetworking` entry, or both.
 
+## What the dependencies actually cost a consumer
+
+Measured by the moviePicker session against their own build, 2026-08-20, comparing a8a5bc1 (before
+signum and ktor-client-darwin) with 1e9d5ae (after). All four frameworks freshly linked in the
+measured build, mtimes checked against the link tasks.
+
+| target / config | before | after | delta |
+| --- | --- | --- | --- |
+| iosArm64 release | 147M | 147M | **0** |
+| iosSimulatorArm64 release | 146M | 146M | **0** |
+| iosArm64 debug | 394M | 419M | +25M |
+| iosSimulatorArm64 debug | 394M | 419M | +25M |
+
+**Release is unchanged.** The linker dead-strips the whole thing: moviePicker calls none of
+`DeviceIdentity`, `installMutualTls`, `NativeTlsListener` or the SPKI path, so nothing survives into
+a shipped binary. Debug grows ~6.3% because debug linking does not strip.
+
+So the six new native dependencies cost a consumer that does not use mTLS **nothing in a shipped
+binary**. That is worth knowing before weighing whether to take them.
+
+Caveat, and it matters: this was measured on a consumer that never calls the code. A consumer that
+actually uses mTLS keeps what it calls, and will see a real delta. These numbers bound the cost of
+*carrying* the capability, not of using it.
+
 ## Consumer constraints on this work
 
 Established with the moviePicker session, 2026-08-20. These are hard boundaries, not preferences —
