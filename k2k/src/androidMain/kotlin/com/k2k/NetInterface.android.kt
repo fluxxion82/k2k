@@ -1,5 +1,6 @@
 package com.k2k
 
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 
@@ -40,19 +41,20 @@ actual object NetInterface {
     }
 
     actual fun getLocalAddress(): String {
-        val interfaces = NetworkInterface.getNetworkInterfaces()
-        for (networkInterface in interfaces) {
-            val addresses = networkInterface.inetAddresses
-            for (address in addresses) {
-                if (!address.isLoopbackAddress && address is InetAddress && !address.isLinkLocalAddress) {
-                    if (address.hostAddress.contains(":")) {
-                        // This is an IPv6 address, skip it if you prefer IPv4
-                        continue
-                    }
-                    return address.hostAddress
-                }
+        // Interfaces that are down or loopback are skipped here, matching getAddresses(); the choice
+        // among what remains is selectLocalAddress's, and is tested there rather than depending on
+        // whatever this particular machine happens to enumerate.
+        val candidates = mutableListOf<Inet4Address>()
+        for (networkInterface in NetworkInterface.getNetworkInterfaces()) {
+            try {
+                if (networkInterface.isLoopback || !networkInterface.isUp) continue
+            } catch (ignored: Exception) {
+                continue
+            }
+            for (address in networkInterface.inetAddresses) {
+                if (address is Inet4Address) candidates.add(address)
             }
         }
-        return InetAddress.getLocalHost().hostAddress
+        return selectLocalAddress(candidates) ?: InetAddress.getLocalHost().hostAddress
     }
 }
